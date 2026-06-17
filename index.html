@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>学問の地図 — 哲学から、あなたの学科まで</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Noto+Serif+JP:wght@600;900&display=swap');
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root{
+    --accent:#2bd9a6; --accent-rgb:43,217,166;
+    --bg:#070a0c; --panel:rgba(16,22,26,0.92); --line:rgba(255,255,255,0.08);
+    --text:#eef3f5; --dim:rgba(238,243,245,0.55);
+  }
+  html,body{height:100%;width:100%;overflow:hidden;background:var(--bg);
+    font-family:'Noto Sans JP',sans-serif;color:var(--text);}
+  #map{position:fixed;inset:0;width:100vw;height:100vh;display:block;touch-action:none;cursor:grab;background:
+    radial-gradient(ellipse at 50% 0%, #0e1518 0%, #070a0c 70%);}
+  #map.drag{cursor:grabbing;}
+  .link{fill:none;stroke:rgba(255,255,255,0.13);stroke-width:1.4;}
+  .link.path{stroke:rgba(var(--accent-rgb),0.9);stroke-width:2.6;}
+  .rel{fill:none;stroke:rgba(var(--accent-rgb),0.5);stroke-width:1.6;stroke-dasharray:5 5;}
+  .node{cursor:pointer;}
+  .node rect,.node circle{transition:opacity .25s;}
+  .node text{font-weight:700;fill:var(--text);pointer-events:none;paint-order:stroke;stroke:#070a0c;stroke-width:3px;stroke-linejoin:round;}
+  .node.dim{opacity:.24;}
+  .node.sel rect,.node.sel circle{stroke:var(--accent);stroke-width:3.2;filter:drop-shadow(0 0 10px rgba(var(--accent-rgb),0.9));}
+  .node.lineage rect,.node.lineage circle{stroke:var(--accent);stroke-width:2.6;}
+  .node.adj rect,.node.adj circle{stroke:rgba(var(--accent-rgb),0.95);stroke-width:2.2;stroke-dasharray:4 3;}
+  .node.sel text,.node.lineage text{fill:#dffaff;}
+
+  /* ===== トップバー：系譜パンくず ===== */
+  #topbar{position:fixed;top:0;left:0;right:0;height:56px;display:flex;align-items:center;
+    gap:10px;padding:0 18px;background:linear-gradient(#070a0cf2,#070a0cc0);backdrop-filter:blur(6px);
+    border-bottom:1px solid var(--line);z-index:30;}
+  #brandmark{font-family:'Noto Serif JP',serif;font-weight:900;font-size:18px;letter-spacing:.08em;white-space:nowrap;}
+  #brandmark b{color:var(--accent);}
+  #crumb{display:flex;align-items:center;gap:6px;overflow-x:auto;flex:1;font-size:14px;
+    scrollbar-width:none;}
+  #crumb::-webkit-scrollbar{display:none;}
+  #crumb .c{padding:4px 10px;border-radius:20px;background:rgba(255,255,255,0.05);
+    white-space:nowrap;cursor:pointer;border:1px solid transparent;}
+  #crumb .c:hover{border-color:var(--line);}
+  #crumb .c.cur{background:rgba(var(--accent-rgb),0.16);color:var(--accent);font-weight:700;}
+  #crumb .sep{color:var(--dim);}
+  #crumb .ph{color:var(--dim);}
+
+  /* ===== 検索フォーム ===== */
+  #search{position:fixed;top:72px;left:18px;z-index:25;width:330px;max-width:calc(100vw - 36px);}
+  #search .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 14px 13px;
+    box-shadow:0 12px 40px rgba(0,0,0,0.5);}
+  #search .lab{font-size:12px;letter-spacing:.14em;color:var(--accent);font-weight:700;margin-bottom:8px;}
+  #search .row{display:flex;gap:8px;}
+  #q{flex:1;background:#0c1216;border:1px solid var(--line);border-radius:9px;color:var(--text);
+    padding:11px 12px;font-size:15px;font-family:inherit;outline:none;}
+  #q:focus{border-color:var(--accent);}
+  #go{background:var(--accent);color:#04222a;border:none;border-radius:9px;padding:0 16px;font-weight:900;
+    font-size:14px;cursor:pointer;font-family:inherit;}
+  #go:active{transform:translateY(1px);}
+  #search .hint{font-size:11.5px;color:var(--dim);margin-top:8px;line-height:1.5;}
+  #sugg{display:none;margin-top:11px;padding-top:11px;border-top:1px solid var(--line);}
+  #sugg .sgmsg{font-size:12px;color:var(--dim);margin-bottom:8px;line-height:1.5;}
+  #sugg .chip{display:inline-block;margin:0 6px 6px 0;}
+
+  /* ===== 詳細パネル ===== */
+  #detail{position:fixed;top:0;right:0;bottom:0;width:380px;max-width:88vw;background:var(--panel);
+    border-left:1px solid var(--line);box-shadow:-12px 0 40px rgba(0,0,0,0.5);z-index:28;
+    transform:translateX(100%);transition:transform .32s cubic-bezier(.2,.8,.2,1);
+    display:flex;flex-direction:column;}
+  #detail.open{transform:translateX(0);}
+  #detail .dhead{padding:64px 22px 16px;border-bottom:1px solid var(--line);}
+  #detail .dkind{font-size:12px;letter-spacing:.16em;color:var(--accent);font-weight:700;}
+  #detail .dname{font-family:'Noto Serif JP',serif;font-weight:900;font-size:30px;margin-top:6px;line-height:1.25;}
+  #detail .dlevel{font-size:12px;color:var(--dim);margin-top:8px;}
+  #detail .dbody{padding:18px 22px;overflow-y:auto;flex:1;}
+  #detail .ddesc{font-size:15px;line-height:1.85;color:#dce6e9;}
+  .dlearn{display:none;margin-top:16px;}
+  .dlearn .dl-row{font-size:13.5px;line-height:1.7;color:#cdd9dd;margin-bottom:10px;padding-left:11px;border-left:2px solid rgba(var(--accent-rgb),0.5);}
+  .dlearn .dl-row b{display:block;font-size:11.5px;letter-spacing:.1em;color:var(--accent);margin-bottom:3px;}
+  #detail .sec{margin-top:22px;}
+  #detail .sec h4{font-size:12px;letter-spacing:.12em;color:var(--accent);font-weight:700;margin-bottom:10px;
+    display:flex;align-items:center;gap:8px;}
+  #detail .sec h4 .ar{font-size:15px;}
+  #detail .chips{display:flex;flex-wrap:wrap;gap:7px;}
+  .chip{background:rgba(var(--accent-rgb),0.08);border:1px solid rgba(var(--accent-rgb),0.3);
+    color:#cfeef4;border-radius:20px;padding:6px 12px;font-size:13px;cursor:pointer;white-space:nowrap;}
+  .chip:hover{background:rgba(var(--accent-rgb),0.18);}
+  .chip.up{border-style:dashed;}
+  #detail .ask{margin:24px 22px;padding:16px;border:1px solid rgba(var(--accent-rgb),0.4);border-radius:12px;
+    background:rgba(var(--accent-rgb),0.06);}
+  #detail .ask .q{font-family:'Noto Serif JP',serif;font-weight:700;font-size:17px;line-height:1.6;}
+  #detail .ask .qs{font-size:13px;color:var(--dim);margin-top:8px;line-height:1.7;}
+  #dclose{position:absolute;top:64px;right:18px;width:34px;height:34px;border-radius:50%;
+    background:rgba(255,255,255,0.06);border:1px solid var(--line);color:var(--text);font-size:18px;
+    cursor:pointer;line-height:1;}
+
+  /* ===== ミニマップ ===== */
+  #minimap{position:fixed;right:16px;bottom:16px;width:210px;height:150px;background:rgba(8,12,14,0.85);
+    border:1px solid var(--line);border-radius:10px;z-index:26;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,0.5);}
+  #minimap.shift{right:396px;}
+  #mmlabel{position:absolute;top:6px;left:9px;font-size:10px;letter-spacing:.14em;color:var(--dim);z-index:2;}
+  #mmsvg{position:absolute;inset:0;width:100%;height:100%;}
+  #mmview{fill:rgba(var(--accent-rgb),0.14);stroke:var(--accent);stroke-width:1.4;}
+
+  /* ===== ズームコントロール ===== */
+  #zoom{position:fixed;left:18px;bottom:16px;z-index:26;display:flex;flex-direction:column;gap:7px;}
+  #zoom button{width:40px;height:40px;border-radius:10px;background:var(--panel);border:1px solid var(--line);
+    color:var(--text);font-size:19px;cursor:pointer;font-family:inherit;}
+  #zoom button:hover{border-color:var(--accent);color:var(--accent);}
+  #zoom .rst{font-size:12px;font-weight:700;}
+
+  /* ===== 凡例 ===== */
+  #legend{position:fixed;left:18px;top:248px;z-index:24;font-size:11.5px;color:var(--dim);
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:11px 13px;line-height:1.9;max-width:330px;}
+  #legend b{color:var(--text);}
+  #legend .ac{color:var(--accent);}
+  @media (max-width:720px){
+    #legend{display:none;}
+    #search{top:62px;left:10px;right:10px;width:auto;}
+    #search .box{padding:11px 11px 11px;}
+    #sugg{max-height:38vh;overflow-y:auto;}
+    /* 詳細：下からのボトムシート */
+    #detail{top:auto;bottom:0;left:0;right:0;width:100%;max-width:none;height:82vh;
+      border-left:none;border-top:1px solid var(--line);border-radius:18px 18px 0 0;
+      transform:translateY(100%);box-shadow:0 -14px 40px rgba(0,0,0,0.55);}
+    #detail.open{transform:translateY(0);}
+    #detail .dhead{padding:26px 18px 14px;}
+    #detail .dname{font-size:26px;}
+    #dclose{top:14px;right:14px;}
+    #detail .ask{margin:16px 18px;}
+    #minimap{width:128px;height:94px;}
+    #minimap.shift{right:10px;bottom:10px;opacity:.5;}
+    /* タップしやすく */
+    #zoom button{width:46px;height:46px;}
+    .chip{padding:8px 13px;}
+    #q{font-size:16px;}
+    #go{padding:0 18px;}
+    .sim-btn{padding:15px;font-size:15px;}
+    #detail .dbody{padding:16px 18px;}
+  }
+  /* ===== 伴走シミュレーター ===== */
+  .sim-btn{display:block;width:100%;margin-top:22px;padding:14px;border:none;border-radius:12px;
+    background:var(--accent);color:#04222a;font-family:inherit;font-weight:900;font-size:14.5px;cursor:pointer;}
+  .sim-btn:active{transform:translateY(1px);}
+  .sim-overlay{position:fixed;inset:0;z-index:60;background:rgba(3,6,8,0.86);backdrop-filter:blur(4px);
+    display:none;align-items:center;justify-content:center;padding:24px;}
+  .sim-overlay.open{display:flex;}
+  .sim-card{width:780px;max-width:100%;max-height:90vh;overflow-y:auto;background:#0c1418;border:1px solid var(--line);
+    border-radius:18px;box-shadow:0 24px 70px rgba(0,0,0,0.6);position:relative;}
+  .sim-close{position:absolute;top:14px;right:14px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.06);
+    border:1px solid var(--line);color:var(--text);font-size:19px;cursor:pointer;z-index:2;}
+  .sim-head{padding:28px 28px 18px;border-bottom:1px solid var(--line);}
+  .sim-kicker{font-size:12px;letter-spacing:.14em;color:var(--accent);font-weight:700;}
+  .sim-title{font-family:'Noto Serif JP',serif;font-weight:900;font-size:28px;margin-top:8px;line-height:1.3;}
+  .sim-title #simField{color:var(--accent);}
+  .sim-body{padding:22px 28px 28px;}
+  .sim-step{margin-bottom:22px;}
+  .sim-q{font-size:14px;font-weight:700;color:#cfe9ef;margin-bottom:10px;}
+  .sim-q span{font-weight:400;color:var(--dim);font-size:12px;margin-left:6px;}
+  #simCatch{width:100%;background:#0a0f12;border:1px solid var(--line);border-radius:9px;color:var(--text);
+    padding:12px;font-size:15px;font-family:inherit;outline:none;}
+  #simCatch:focus{border-color:var(--accent);}
+  .sim-keybtn{position:absolute;top:18px;right:60px;background:rgba(255,255,255,0.06);border:1px solid var(--line);
+    color:var(--dim);border-radius:8px;padding:6px 11px;font-size:12px;cursor:pointer;font-family:inherit;}
+  .sim-keybtn:hover{color:var(--accent);border-color:var(--accent);}
+  .sim-keypanel{display:none;margin-bottom:20px;padding:14px;border:1px solid var(--line);border-radius:11px;background:rgba(255,255,255,0.02);}
+  .sim-keyrow{display:flex;gap:8px;margin-top:8px;}
+  #simKey{flex:1;background:#0a0f12;border:1px solid var(--line);border-radius:8px;color:var(--text);padding:10px;font-size:14px;font-family:inherit;outline:none;}
+  #simKey:focus{border-color:var(--accent);}
+  .sim-keysave{background:var(--accent);color:#04222a;border:none;border-radius:8px;padding:0 14px;font-weight:900;cursor:pointer;font-family:inherit;}
+  .sim-keyclear{background:transparent;color:var(--dim);border:1px solid var(--line);border-radius:8px;padding:0 12px;cursor:pointer;font-family:inherit;}
+  .sim-keystatus{font-size:12px;margin-top:9px;color:var(--dim);}
+  .sim-model{width:100%;margin-top:8px;background:#0a0f12;border:1px solid var(--line);border-radius:8px;color:var(--text);padding:10px;font-size:14px;font-family:inherit;outline:none;cursor:pointer;}
+  .sim-model:focus{border-color:var(--accent);}
+  .sim-companies{display:flex;flex-wrap:wrap;gap:8px;}
+  .sim-co{border:1px solid var(--line);border-radius:11px;padding:9px 12px;cursor:pointer;background:rgba(255,255,255,0.03);font-size:13px;}
+  .sim-co .co-type{color:var(--dim);font-size:11px;margin-left:6px;}
+  .sim-co.near{border-color:rgba(var(--accent-rgb),0.5);}
+  .sim-co .near-badge{display:inline-block;margin-left:7px;font-size:10px;font-weight:700;color:#04222a;background:var(--accent);border-radius:10px;padding:1px 7px;}
+  .sim-co.sel{background:rgba(var(--accent-rgb),0.16);border-color:var(--accent);}
+  .sim-gen{display:block;width:100%;margin-top:6px;padding:14px;border:none;border-radius:12px;background:var(--accent);color:#04222a;font-weight:900;font-size:15px;cursor:pointer;font-family:inherit;}
+  .sim-out{margin-top:22px;display:flex;flex-direction:column;gap:16px;}
+  .qcard{border:1px solid rgba(var(--accent-rgb),0.4);border-radius:14px;padding:18px;background:rgba(var(--accent-rgb),0.05);}
+  .qcard h5{font-family:'Noto Serif JP',serif;font-size:19px;font-weight:900;margin-bottom:4px;}
+  .qcard .qt{font-size:12px;color:var(--dim);margin-bottom:12px;}
+  .qcard .ql{font-size:14.5px;line-height:1.7;margin:8px 0;padding-left:18px;position:relative;}
+  .qcard .ql b{color:var(--accent);}
+  .qcard .ql::before{content:'';position:absolute;left:0;top:9px;width:8px;height:8px;border-radius:50%;background:var(--accent);}
+  .qcard .qfoot{margin-top:12px;font-size:13px;color:#cfe9ef;font-weight:700;}
+  @media (max-width:720px){
+    .sim-overlay{padding:0;}
+    .sim-card{max-height:100vh;height:100vh;border-radius:0;}
+    .sim-head{padding:22px 16px 14px;padding-right:108px;position:sticky;top:0;background:#0c1418;z-index:3;}
+    .sim-body{padding:16px;}
+    .sim-title{font-size:21px;}
+    .sim-keybtn{top:13px;right:56px;}
+    .sim-close{position:fixed;top:12px;right:12px;}
+    #simCatch,#simKey,.sim-model{font-size:16px;}
+    .sim-co{padding:11px 13px;font-size:14px;}
+    .sim-gen{padding:16px;font-size:16px;}
+    .qcard{padding:16px;} .qcard h5{font-size:18px;} .qcard .ql{font-size:15px;}
+    #simKeyPanel{padding:13px;} .sim-keysave,.sim-keyclear{padding:0 12px;}
+  }
+</style>
+</head>
+<body>
+<svg id="map"><g id="world"></g></svg>
+
+<div id="topbar">
+  <div id="brandmark">学問の<b>地図</b></div>
+  <div id="crumb"><span class="ph">学科を検索すると、ここに「哲学 › … › あなたの学科」の系譜が出ます</span></div>
+</div>
+
+<div id="search">
+  <div class="box">
+    <div class="lab">あなたの志望学部・学科は？</div>
+    <div class="row">
+      <input id="q" list="allnames" placeholder="例：臨床心理 / 看護 / 建築 / 情報 …" autocomplete="off">
+      <button id="go">探す</button>
+    </div>
+    <datalist id="allnames"></datalist>
+    <div class="hint">入力すると、その学科へ寄っていきます。<span style="color:var(--accent)">中心＝抽象（哲学）</span>・<span style="color:var(--accent)">外＝専門分化</span>・<span style="color:var(--accent)">点線＝となりの学科</span>。学部＋学科のままでもOK（例：人文学部・人間科学科）。</div>
+    <div id="sugg"></div>
+  </div>
+</div>
+
+<aside id="detail">
+  <button id="dclose">×</button>
+  <div class="dhead">
+    <div class="dkind" id="dkind"></div>
+    <div class="dname" id="dname"></div>
+    <div class="dlevel" id="dlevel"></div>
+  </div>
+  <div class="dbody">
+    <div class="ddesc" id="ddesc"></div>
+    <div id="dLearn" class="dlearn"></div>
+    <div class="sec" id="sec-up"><h4><span class="ar">▲</span>抽象化すると（おおもと）</h4><div class="chips" id="ch-up"></div></div>
+    <div class="sec" id="sec-down"><h4><span class="ar">▼</span>専門分化すると（この先）</h4><div class="chips" id="ch-down"></div></div>
+    <div class="sec" id="sec-adj"><h4><span class="ar">↔</span>となりの学科（本命かも？）</h4><div class="chips" id="ch-adj"></div></div>
+    <button id="simBtn" class="sim-btn">🎒 この専門で「キャリアクエストの準備」をする</button>
+  </div>
+  <div class="ask">
+    <div class="q">視野が広がった今、本命は本当にここ？</div>
+    <div class="qs">「方向は合ってる」のか、「方向は合ってるけど“となり”が本命」なのか。点線でつながる学科も、一度のぞいてみよう。</div>
+  </div>
+</aside>
+
+<div id="minimap"><div id="mmlabel">ぜんたい</div><svg id="mmsvg"><rect id="mmview"></rect></svg></div>
+
+<div id="zoom">
+  <button id="zin" title="拡大">＋</button>
+  <button id="zout" title="縮小">−</button>
+  <button id="zrst" class="rst" title="全体へ">全</button>
+</div>
+
+<div id="legend">
+  <b>学問の地図</b>　中心に<span class="ac">哲学</span>（すべての学びのおおもと）。<br>
+  <b>外へ行くほど具体・専門</b>。進学＝中心から<span class="ac">外へ分化</span>していくこと。<br>
+  色は分野のまとまり。ドラッグで移動・ホイールで拡大縮小。
+</div>
+
+<!-- ===== 伴走シミュレーター（キャリアクエスト準備） ===== -->
+<div id="sim" class="sim-overlay">
+  <div class="sim-card">
+    <button id="simClose" class="sim-close">×</button>
+    <div class="sim-head">
+      <div class="sim-kicker">キャリアクエスト 7/3 ｜ 専門で課題をどれだけ解ける？ × 分化の確かめ</div>
+      <div class="sim-title"><span id="simField">—</span>の眼鏡で、世の中を解いてみる</div>
+      <button id="simKeyBtn" class="sim-keybtn">⚙ AI設定</button>
+    </div>
+    <div class="sim-body">
+      <div id="simKeyPanel" class="sim-keypanel">
+        <div class="sim-q">Anthropic APIキー<span>この端末にだけ保存。生徒配布時はサーバー経由に切替</span></div>
+        <div class="sim-keyrow">
+          <input id="simKey" type="password" autocomplete="off" placeholder="sk-ant-...">
+          <button id="simKeySave" class="sim-keysave">保存</button>
+          <button id="simKeyClear" class="sim-keyclear">消去</button>
+        </div>
+        <div id="simKeyStatus" class="sim-keystatus"></div>
+        <div class="sim-q" style="margin-top:14px;">AIモデル<span>問いの切れ味↑＝Opus／速い安い＝Haiku</span></div>
+        <select id="simModel" class="sim-model">
+          <option value="claude-sonnet-4-6">Sonnet 4.6（おすすめ・質と速さの両立）</option>
+          <option value="claude-opus-4-8">Opus 4.8（最高品質・じっくり）</option>
+          <option value="claude-haiku-4-5">Haiku 4.5（速い・安い）</option>
+        </select>
+      </div>
+      <div class="sim-step">
+        <div class="sim-q">① あなたのキャッチコピー<span>5/27の適性検査の結果。空欄でもOK</span></div>
+        <input id="simCatch" autocomplete="off" placeholder="例：まわりをよく見て動く サポーター型">
+      </div>
+      <div class="sim-step">
+        <div class="sim-q">② 当日まわりたいブースを選ぶ<span>最大3つ・「近い」は専門と相性○</span></div>
+        <div id="simCompanies" class="sim-companies"></div>
+      </div>
+      <button id="simGen" class="sim-gen">③ 専門のメガネで「どれだけ解けるか」を試算する</button>
+      <div id="simOut" class="sim-out"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ===================== 学問データ（哲学＝頂点 → 分野 → 代表学科） ===================== */
+/* desc：何を学ぶ＋誰のどんな困りごとに向き合うか（授業の「専門の眼鏡」と接続） */
+const DATA = {
+  id:'philosophy', name:'哲学', kind:'おおもと',
+  desc:'「そもそも、なぜ？ 何のため？」を問う、すべての学問のおおもと。世界・人間・善悪・知そのものを根っこから考える。ここから枝分かれして、いまの学部・学科になった。',
+  children:[
+    { id:'humanities', name:'人文学', kind:'分野',
+      desc:'人間が何を考え、何を語り、どう生きてきたかを読み解く。「人の心と言葉と歴史」の分野。',
+      children:[
+        { id:'literature', name:'文学・言語', desc:'言葉と物語を深く読む。書く人・伝えたい人の力になる。', related:['education_lang','media','design'] },
+        { id:'history', name:'歴史学', desc:'過去から今を読み解く。記録し、伝え、まちや文化を守る人の力になる。', related:['archaeology','sociology'] },
+        { id:'philosophy_dept', name:'哲学・倫理', desc:'考え方そのものを鍛える。迷う人・決めかねる人のとなりで筋道を立てる。', related:['law','religion'] },
+        { id:'psychology', name:'心理学', desc:'人の心の動きを科学する。悩む人・伸びたい人の心に伴走する。',
+          children:[
+            { id:'clinical_psych', name:'臨床心理', desc:'心の不調を抱える人を支える。カウンセラー・心理士への道。', related:['social_welfare','nursing','education_general'] },
+            { id:'cog_psych', name:'認知・発達心理', desc:'人がどう学び育つかを探る。教育や子育ての現場と隣り合う。', related:['education_general','childcare'] },
+          ]},
+        { id:'religion', name:'宗教・思想', desc:'人が何を信じ、何に支えられて生きるかを学ぶ。', related:['philosophy_dept'] },
+        { id:'archaeology', name:'考古・文化財', desc:'遺跡やモノから人類をたどる。地域の宝を守り活かす。', related:['history'] },
+        { id:'human_sciences', name:'人間科学', desc:'心理・社会・教育・健康などをまたいで「人間とは何か」を総合的に学ぶ。分野の境目に立って人を支える。', related:['psychology','sociology','education_general','sports','social_welfare'] },
+        { id:'liberal_arts', name:'教養・リベラルアーツ', desc:'特定の専門に絞らず、幅広い学問を横断して「考える土台」をつくる。視野の広さで人とつながる。', related:['philosophy_dept','literature','sociology'] },
+        { id:'culture_studies', name:'文化学', desc:'日本文化や地域の文化を読み解き、受け継ぎ・発信する。まちや人の「らしさ」を支える。', related:['history','literature','media'] },
+      ]},
+    { id:'social', name:'社会科学', kind:'分野',
+      desc:'人が集まってつくる「社会・お金・ルール」のしくみを解き明かす分野。',
+      children:[
+        { id:'law', name:'法学', desc:'ルールと権利を学ぶ。トラブルを抱えた人・守られたい人の力になる。', related:['politics','philosophy_dept'] },
+        { id:'politics', name:'政治・国際', desc:'社会の決め方と世界のつながりを学ぶ。', related:['law','economics'] },
+        { id:'economics', name:'経済学', desc:'お金とモノの流れを読む。働く人・暮らす人の土台を支える。', related:['business','politics'] },
+        { id:'business', name:'経営・商学', desc:'会社や事業のまわし方を学ぶ。挑戦する人・売りたい人の力になる。', related:['economics','info_system','media'] },
+        { id:'sociology', name:'社会学', desc:'家族・若者・まちなど身近な社会を問い直す。', related:['social_welfare','media','history'] },
+        { id:'social_welfare', name:'社会福祉', desc:'困りごとを抱える人と制度をつなぐ。生活に伴走する道。', related:['nursing','clinical_psych','childcare'] },
+      ]},
+    { id:'science', name:'自然科学', kind:'分野',
+      desc:'自然のしくみを「数と実験」で確かめる分野。世界の裏側の法則を探る。',
+      children:[
+        { id:'math', name:'数学', desc:'数と論理の言葉。あらゆる技術・データの土台になる。', related:['info_cs','physics','economics'] },
+        { id:'physics', name:'物理学', desc:'モノと力とエネルギーの法則を探る。', related:['math','ee','mechanical'] },
+        { id:'chemistry', name:'化学', desc:'物質の成り立ちと変化を扱う。素材・薬・食を支える。', related:['materials','pharmacy','agriculture'] },
+        { id:'biology', name:'生物学', desc:'生き物のしくみを探る。医療・農・環境の入り口。', related:['agriculture','medicine','environment'] },
+        { id:'earth', name:'地学・地球環境', desc:'地球・気象・防災を学ぶ。災害から人を守る。', related:['environment','civil'] },
+      ]},
+    { id:'engineering', name:'工学・技術', kind:'分野',
+      desc:'科学を使って「役に立つモノ・しくみ」をつくる分野。困りごとを設計で解く。',
+      children:[
+        { id:'mechanical', name:'機械工学', desc:'動くモノを設計する。ものづくりの現場を支える。', related:['ee','physics'] },
+        { id:'ee', name:'電気・電子', desc:'電気と回路で世界を動かす。機械と情報の橋渡し。', related:['mechanical','info_cs'] },
+        { id:'civil', name:'土木・都市', desc:'道・橋・まちをつくり守る。暮らしの土台と防災。', related:['architecture','earth'] },
+        { id:'architecture', name:'建築', desc:'人が過ごす空間を設計する。住む人・集う人の毎日をつくる。', related:['civil','design','environment'] },
+        { id:'materials', name:'材料・応用化学', desc:'新しい素材を生む。製品の中身から世界を変える。', related:['chemistry','mechanical'] },
+      ]},
+    { id:'info', name:'情報', kind:'分野',
+      desc:'データとコンピュータで「面倒」を解く分野。いまいちばん広がっている領域。',
+      children:[
+        { id:'info_cs', name:'情報科学・AI', desc:'プログラムとAIで仕組みをつくる。誰かの面倒を自動で軽くする。', related:['math','ee','info_system'] },
+        { id:'info_system', name:'情報システム・経営情報', desc:'技術と仕事をつなぐ。現場の困りごとを仕組みで解く。', related:['business','info_cs'] },
+        { id:'media', name:'メディア・コンテンツ', desc:'伝える・つくる技術。届けたい人と受け取る人をつなぐ。', related:['design','literature','business'] },
+      ]},
+    { id:'health', name:'医療・健康', kind:'分野',
+      desc:'人の体と命を支える分野。目の前の人の「痛い・つらい」に直接向き合う。',
+      children:[
+        { id:'medicine', name:'医学', desc:'病気を診て治す。患者の命と暮らしを守る。', related:['nursing','biology','pharmacy'] },
+        { id:'nursing', name:'看護学', desc:'病む人のいちばん近くで支える。生活に寄り添う医療。', related:['medicine','social_welfare','nutrition'] },
+        { id:'rehab_pt', name:'理学・作業療法', desc:'動きと暮らしを取り戻す手助け。回復に伴走する。', related:['judo_therapy','nursing','sports'] },
+        { id:'judo_therapy', name:'柔道整復・鍼灸', desc:'体の痛みや不調を手当てする。スポーツや高齢者の体を支える。', related:['rehab_pt','sports','nursing'] },
+        { id:'pharmacy', name:'薬学', desc:'薬で体を支える。安全に効かせる専門家。', related:['chemistry','medicine'] },
+        { id:'nutrition', name:'栄養・食物', desc:'食から健康を支える。病む人・育つ人・走る人の体をつくる。', related:['nursing','sports','agriculture'] },
+        { id:'dental_hygiene', name:'歯科衛生', desc:'歯と口の健康を守る。痛みを防ぎ、食べる力と笑顔を支える。', related:['nursing','medicine','nutrition'] },
+      ]},
+    { id:'education', name:'教育', kind:'分野',
+      desc:'人が育つのを支える分野。学ぶ人・育つ人のとなりに立つ。',
+      children:[
+        { id:'education_general', name:'教育学', desc:'人がどう学び育つかを探り、支える。先生・支援者への道。', related:['cog_psych','clinical_psych','childcare'] },
+        { id:'education_lang', name:'国語・英語ほか教科', desc:'教科を通して伝える力を育てる。', related:['literature','education_general'] },
+        { id:'childcare', name:'保育・幼児教育', desc:'子どもの一日と育ちを支える。家庭と子どもに伴走する。', related:['education_general','social_welfare','cog_psych'] },
+        { id:'special_edu', name:'特別支援', desc:'一人ひとりの違いに合わせて学びを支える。', related:['social_welfare','clinical_psych'] },
+      ]},
+    { id:'life', name:'生活・人間科学', kind:'分野',
+      desc:'暮らし・食・衣・家族など「毎日の生活」を科学する分野。',
+      children:[
+        { id:'home_econ', name:'家政・生活科学', desc:'衣食住と家族の暮らしを整える。', related:['nutrition','childcare','design'] },
+        { id:'culinary', name:'調理・製菓', desc:'おいしさで人を笑顔にする。食卓と人をつなぐ。', related:['nutrition','home_econ'] },
+        { id:'fashion', name:'服飾・被服', desc:'装いで人を支える。つくる・伝える。', related:['design','home_econ'] },
+      ]},
+    { id:'art', name:'芸術・表現', kind:'分野',
+      desc:'感じたことを形にして伝える分野。心を動かすことで人を支える。',
+      children:[
+        { id:'design', name:'デザイン', desc:'見た目と使い心地を設計する。使う人の「わかりにくい・使いにくい」を解く。', related:['architecture','media','fashion'] },
+        { id:'fine_art', name:'美術・造形', desc:'作品で世界を表現する。', related:['design'] },
+        { id:'music', name:'音楽', desc:'音で心を動かす。演奏・つくる・支える。', related:['media'] },
+      ]},
+    { id:'nature_field', name:'農・環境・生命', kind:'分野',
+      desc:'食・自然・生き物を「育て・守る」分野。地球と暮らしの未来を支える。',
+      children:[
+        { id:'agriculture', name:'農学・食品', desc:'食べ物と農を科学する。つくる人・食べる人の土台を支える。', related:['biology','nutrition','environment'] },
+        { id:'environment', name:'環境学', desc:'自然と人の暮らしの折り合いを探る。', related:['earth','agriculture','civil'] },
+        { id:'veterinary', name:'獣医・動物', desc:'動物の命と人との関わりを支える。', related:['biology','agriculture'] },
+      ]},
+    { id:'sports_field', name:'体育・スポーツ', kind:'分野',
+      desc:'体と運動を科学する分野。動く人・育つ人・健康でいたい人を支える。',
+      children:[
+        { id:'sports', name:'スポーツ科学', desc:'体の動きと健康を科学する。鍛える人・治す人を支える。', related:['judo_therapy','rehab_pt','nutrition'] },
+        { id:'health_edu', name:'健康・保健', desc:'地域や学校の健康を支える。', related:['nursing','nutrition'] },
+      ]},
+    { id:'practical', name:'実学・専門技術[専門学校]', kind:'分野',
+      desc:'「手に職をつける」学び。理屈より、現場で人を直接支える技術を磨く分野。学問とは別の入り口から、同じように誰かの力になる。',
+      children:[
+        { id:'beauty', name:'美容・理容', desc:'髪・肌・装いを整えて人を輝かせる。「なりたい自分」になる手伝いをする。', related:['fashion','design','health_edu'] },
+        { id:'bridal_hotel', name:'ブライダル・ホテル・観光', desc:'特別な時間とおもてなしをつくる。旅・式・滞在で人を笑顔にする。', related:['business','culinary','media'] },
+        { id:'auto_mech', name:'自動車整備', desc:'車を直し、安全な移動を守る。困っている運転手のいちばんの味方になる。', related:['mechanical','ee'] },
+        { id:'care_welfare', name:'介護福祉', desc:'高齢の方や支援が必要な人の暮らしに、毎日のとなりで寄り添う。', related:['social_welfare','nursing','childcare'] },
+        { id:'med_admin', name:'医療事務・医療秘書', desc:'病院の受付や事務で医療を陰から支える。患者と医療をつなぐ窓口になる。', related:['nursing','business','dental_hygiene'] },
+        { id:'accounting', name:'会計・ビジネス実務', desc:'簿記・会計でお金の流れを正しく扱う。会社と人の暮らしを数字で支える。', related:['business','economics'] },
+      ]},
+  ]
+};
+
+/* ===================== レイアウト（上＝抽象 / 下＝具体） ===================== */
+const NW=120, NH=44;
+const RING=[0,200,380,780];
+function radiusOf(d){ return d<RING.length?RING[d]:RING[RING.length-1]+(d-RING.length+1)*140; }
+const byId={};
+function countLeaves(n){ return (n.children&&n.children.length)?n.children.reduce((a,c)=>a+countLeaves(c),0):1; }
+const SUBDIV={"literature": [{"id": "literature_1", "name": "日本文学", "desc": "古典から近現代の小説・詩・物語を、本文をていねいに読み解いて学ぶ。主人公がなぜその一言を言ったのか、作者は何を仕掛けたのかを根拠を挙げて説明する人に向いている。同じ言葉でも『英語・英文』が外国語の作品を扱うのに対し、こちらは日本語で書かれた作品と日本語そのものの歴史を扱う。", "L": "日本語で書かれた文学作品の読み方と、時代ごとの言葉の移り変わりを学べる。", "S": "古い手紙や郷土資料を読めずに困っている図書館・自治体の人に、くずし字や古典を読み解いて意味を伝えられる。", "C": "国語教員・図書館司書・出版編集者・学芸員・新聞記者"}, {"id": "literature_2", "name": "英語・英文", "desc": "英語の小説やニュースを原文で読み、書き手の意図や文化背景まで理解することを学ぶ。日本語に訳されたものでは消えてしまう細かいニュアンスを、自分でつかまえたい人に向いている。『日本文学』が日本語の作品を扱うのに対し、こちらは英語圏の文章と、英語という言語のしくみ自体を扱う。", "L": "英語の文章を正確に読み書きする力と、英語圏の文化や考え方を学べる。", "S": "海外の取引先とメールでやり取りする会社の人が、誤解なく意図を伝えたいときに、正しい英文で橋渡しできる。", "C": "英語教員・通訳・翻訳者・海外営業・客室乗務員"}, {"id": "literature_3", "name": "言語学", "desc": "言葉そのもののしくみを、特定の作品ではなく仕組みとして調べて学ぶ。なぜ赤ちゃんは言葉を覚えられるのか、方言はどう生まれるのかといった『なぜ』を考えるのが好きな人に向いている。文学が作品の中身を読むのに対し、こちらは音・文法・意味の規則そのものを観察して理屈を見つける。", "L": "言葉がどんな規則で成り立ち、人がどうやって言葉を使うのかを学べる。", "S": "音声入力や翻訳アプリを作る人が『なぜ機械が言葉をうまく扱えないか』を解くために、言葉の規則をデータにして渡せる。", "C": "日本語教師・言語データの研究員・辞書編集者・AI開発の言語担当・大学研究者"}, {"id": "literature_4", "name": "創作・ライティング", "desc": "小説・脚本・エッセイなど、自分で文章を書いて人に届けることを実践しながら学ぶ。読むだけでなく『書いて伝えたい』気持ちが強く、人に読んでもらって直す作業を楽しめる人に向いている。文学研究が既にある作品を分析するのに対し、こちらは自分が新しく作品やコピーを生み出す側に立つ。", "L": "物語や文章を組み立てて、人に伝わる形に仕上げる技術を学べる。", "S": "商品の良さをうまく言葉にできない店や企業に、心に届くキャッチコピーや紹介文を書いて売れる手助けができる。", "C": "作家・脚本家・コピーライター・Webライター・編集者"}], "history": [{"id": "history_1", "name": "日本史", "desc": "縄文時代から現代まで、日本でどんな出来事が起きどう暮らしが変わってきたかを、古文書や遺跡から調べる。昔の手紙や日記を読み解くのが好きな人、地元の城や神社の歴史が気になる人に向いている。世界の国々を扱う東洋史・西洋史と違い、研究の舞台を日本に絞り込むのが特徴。", "L": "古文書の読み方や、史料から事実を確かめる方法を学ぶ。", "S": "古い文書が読めず先祖の土地の由来がわからない自治体や旧家のために、記録を解読して地域の歴史を残せる。", "C": "学芸員・歴史研究者・社会科教員・公務員（文化財担当）・出版編集"}, {"id": "history_2", "name": "東洋史", "desc": "中国・朝鮮・インドなどアジアの国々が、どう国を作り日本とどんなやりとりをしてきたかを調べる。中国語など外国の言葉で書かれた史料を読みたい人、アジアの戦争や交易に興味がある人に向いている。日本だけを見る日本史と違い、国と国のつながりを横に見て地域全体を理解する。", "L": "漢文や現地語の史料を読み、アジアの国際関係の歴史を学ぶ。", "S": "近隣国との歴史認識のずれで対立する場面で、事実をもとに冷静な説明や交流の材料を提供できる。", "C": "研究者・学芸員・社会科教員・外務関連職・旅行・貿易関連"}, {"id": "history_3", "name": "考古学", "desc": "文字の記録がない大昔のことを、土から掘り出した土器や骨、住居の跡から推理する。手を動かして発掘するのが好きな人、パズルのように証拠を組み立てるのが得意な人に向いている。文書を読む日本史や東洋史と違い、モノそのものを証拠にして過去を組み立てるのが特徴。", "L": "発掘の方法や、出土品から年代や暮らしを読み取る技術を学ぶ。", "S": "工事の前に遺跡があるか調べたい行政や開発業者のために、発掘して記録を残し貴重な遺跡を守れる。", "C": "発掘調査員・学芸員・文化財保護の公務員・研究者・博物館職員"}, {"id": "history_4", "name": "民俗学", "desc": "祭りや昔話、年中行事など、人々が暮らしの中で受け継いできた習わしを、現地で聞き取って記録する。お年寄りの話を聞くのが好きな人、地元の祭りや方言が気になる人に向いている。事件や政治を扱う他の歴史分野と違い、名もない普通の人々の生活文化に目を向ける。", "L": "聞き取り調査の方法や、風習・伝承を記録し分析する力を学ぶ。", "S": "高齢化で祭りや伝統行事の担い手が消えそうな地域のために、記録を残し次世代へ伝える手助けができる。", "C": "学芸員・研究者・地域おこし協力隊・観光企画・出版編集"}], "philosophy_dept": [{"id": "philosophy_dept_1", "name": "哲学", "desc": "「正しいとは何か」「自分とは何か」のように、答えが一つに決まらない問いを、言葉でゆっくり崩したり組み立て直したりして考える。すぐに結論を出すより、考えの筋道そのものを大事にしたい人に向いている。倫理学が「どう生きるべきか」という行動の問題を扱うのに対し、哲学は「そもそも考えるとはどういうことか」という土台のほうを掘り下げる。", "L": "概念を定義し、論の矛盾を見つけ、筋道立てて主張を組み立てる方法を学べる。", "S": "会議や話し合いで論点がずれてかみ合わない人たちに、何が本当の争点かを言葉で整理して見せられる。", "C": "中学・高校教員・編集者・記者・公務員・大学研究者"}, {"id": "philosophy_dept_2", "name": "倫理", "desc": "「臓器移植は誰を優先すべきか」「AIに人の評価を任せていいか」のように、正解のない場面で何を選ぶべきかを筋道立てて考える。具体的な事件や制度を題材に、立場の違う人の言い分を比べたい人に向いている。哲学が考え方そのものを問うのに対し、倫理は現実の行動や決断にしぼって判断の理由を組み立てる。", "L": "医療・環境・科学技術などの現場で、判断の根拠を立てて意見をまとめる方法を学べる。", "S": "病院や企業で「これは進めていいのか」と迷う担当者に、判断の理由と見落としを整理して示せる。", "C": "医療・福祉職・公務員・企業の倫理担当・教員・NPO職員"}, {"id": "philosophy_dept_3", "name": "宗教", "desc": "世界の宗教が何を信じ、人々の暮らしや争いにどう関わってきたかを、教典や歴史をたどって調べる。海外のニュースや異なる文化を「なぜそう考えるのか」から理解したい人に向いている。倫理が今ここでの判断を扱うのに対し、宗教は人が長い時間かけて積み上げてきた信仰や価値観の成り立ちを学ぶ。", "L": "世界の宗教の歴史・教えと、それが社会や文化に与えてきた影響を学べる。", "S": "宗教の違いで誤解が起きる職場や地域で、相手の背景を踏まえて橋渡しできる人を増やせる。", "C": "学芸員・出版社員・旅行・観光業・国際機関職員・教員"}, {"id": "philosophy_dept_4", "name": "論理・哲学（分析系）", "desc": "言葉や記号を使って「この主張は本当に正しく組み立てられているか」を、数学のように厳密に確かめる。あいまいさが気になり、議論の穴をきちんと見つけたい人に向いている。哲学一般が幅広い問いを扱うのに対し、ここは推論の正しさやAI・言語の仕組みといった、はっきり検証できる部分に的をしぼる。", "L": "論理の規則を使って、推論の正しさや言葉の意味を厳密に分析する方法を学べる。", "S": "AIやシステムの判断が筋の通ったものかを点検したい開発現場の、説明のあいまいさを減らせる。", "C": "システムエンジニア・データ分析職・大学研究者・教員・知財関連職"}], "clinical_psych": [{"id": "clinical_psych_1", "name": "臨床心理", "desc": "うつや不安、人間関係の悩みなど心の不調を抱えた人と面談し、回復を支える方法を学ぶ。困っている人の話をじっくり聴き、寄り添うのが好きな人に向いている。「発達・教育心理」が成長や学びの段階を扱うのに対し、こちらは今すでに苦しんでいる人の治療・支援が中心。", "L": "カウンセリングの技法や心の病気の見立て方を学ぶ。", "S": "病院に行くほどか迷う社会人や学生が、一人で抱え込まず安心して相談できる窓口がない困りごとを解決する。", "C": "公認心理師・臨床心理士・スクールカウンセラー・精神科クリニックの相談員・福祉施設の心理職"}, {"id": "clinical_psych_2", "name": "発達・教育心理", "desc": "赤ちゃんから高齢者まで、人が年齢とともにどう考え方や感情を変えていくかを学ぶ。子どもの成長や学校での学びに関心がある人に向いている。「臨床心理」が不調の治療を担うのに対し、こちらは健康な人がうまく育ち学べる仕組みづくりが中心。", "L": "年齢ごとの心の発達と、学びやすい教え方の理屈を学ぶ。", "S": "勉強につまずく子どもや、発達に特性のある子を持つ親が、その子に合った関わり方が分からず悩む困りごとを解決する。", "C": "小中高の教員・特別支援学校教員・児童発達支援の指導員・教育相談員・大学院進学"}, {"id": "clinical_psych_3", "name": "社会・産業心理", "desc": "人が集団や会社の中でどう動き、なぜ買い物や行動を決めるのかを学ぶ。人の行動の理由を観察したり数字で調べるのが好きな人に向いている。「臨床心理」が個人の悩みを扱うのに対し、こちらは集団・組織・消費者という大きな単位の心理が中心。", "L": "集団や職場での人の心理と、行動データの調べ方を学ぶ。", "S": "社員が辞めたり職場の雰囲気が悪くて困る会社が、原因を見える化して働きやすさを改善できないという困りごとを解決する。", "C": "企業の人事・マーケティングリサーチ職・広告会社の企画職・人材コンサルタント・公務員"}, {"id": "clinical_psych_4", "name": "認知・脳科学", "desc": "記憶・注意・錯覚など、脳がどう情報を処理しているかを実験で調べる。理科や実験、データ分析が好きな人に向いている。他の下位学科が人との関わりを扱うのに対し、こちらは心の仕組みそのものを科学的に解明するのが中心。", "L": "記憶や知覚の仕組みを実験と脳の働きから学ぶ。", "S": "高齢者が使いにくいアプリや事故を起こしやすい機械を、人の認知に合わせて作り直したいという開発者の困りごとを解決する。", "C": "研究職・大学院進学・UXデザイナー・データアナリスト・医療機器メーカーの開発職"}], "cog_psych": [{"id": "cog_psych_1", "name": "発達心理", "desc": "赤ちゃんから高齢者まで、人が年齢とともにどう変わっていくかを調べる。「3歳の子はなぜ言葉が急に増えるのか」「思春期に親と距離を取りたくなるのはなぜか」といった成長の仕組みに興味がある人に向いている。となりの教育心理が学校での学びに絞るのに対し、こちらは人生全体の変化そのものを扱う。", "L": "年齢ごとの心と体の発達の段階や、その変化を支える仕組みを学ぶ。", "S": "言葉が遅い子を心配する保護者や保育士に、その子に今必要な関わり方を示せる。", "C": "保育士・幼稚園教諭・児童福祉施設職員・発達支援員・研究者"}, {"id": "cog_psych_2", "name": "教育心理", "desc": "勉強やる気、記憶の仕組み、教え方の工夫など、学ぶ場面に的をしぼって心を調べる。「なぜ同じ授業でも分かる子と分からない子がいるのか」を考えたい人に向いている。となりの発達心理が人生全体の変化を見るのに対し、こちらは学校や塾での「学び」に集中する。", "L": "効果的な教え方や、やる気の引き出し方、つまずきの原因の見つけ方を学ぶ。", "S": "授業についていけない生徒に、その子に合った学び方を見つけて先生が支えられる。", "C": "教員・スクールカウンセラー・教材開発者・学習塾運営・教育研究者"}, {"id": "cog_psych_3", "name": "臨床心理", "desc": "不安や落ち込み、人間関係の悩みなど、心のつらさを抱えた人をどう支えるかを学ぶ。「友達の相談に乗るのが好き」「悩んでいる人の力になりたい」という人に向いている。となりの教育心理が学びを扱うのに対し、こちらは心の不調そのものを聞き取り、回復を手伝う。", "L": "悩みの聴き方やカウンセリングの技術、心の状態の見立て方を学ぶ。", "S": "学校に行けなくなった子や、職場で心が疲れた人が、安心して相談できる場をつくれる。", "C": "公認心理師・臨床心理士・スクールカウンセラー・医療機関の心理職・福祉相談員"}, {"id": "cog_psych_4", "name": "認知心理", "desc": "見る・覚える・考える・決めるといった、頭の中の情報処理の仕組みを調べる。「人はなぜ錯覚を起こすのか」「どんな画面が使いやすいのか」に興味がある人に向いている。となりの臨床心理が悩みの支援を扱うのに対し、こちらは健康な人の脳の働き方そのものを実験で確かめる。", "L": "記憶や注意、判断といった心の働きを、実験やデータで調べる方法を学ぶ。", "S": "高齢者が間違えやすい操作画面を見直し、誰でも迷わず使える製品づくりに役立てられる。", "C": "UX/UIデザイナー・商品企画・データ分析職・広告マーケター・研究者"}], "religion": [{"id": "religion_1", "name": "宗教", "desc": "世界の宗教がどう生まれ、人々の暮らしや行事をどう形づくってきたかを学ぶ。お盆やクリスマスのような身近な行事の意味を知りたい人、他の国の文化を理解したい人に向く。となりの哲学が「正しさを理屈で考える」のに対し、宗教は実際の信仰や儀式・歴史そのものを観察して理解する。", "L": "仏教・キリスト教・イスラム教などの教えや歴史、宗教が社会に果たす役割を学べる。", "S": "宗教の違いを知らずに外国人の習慣を誤解してしまう職場や学校で、すれ違いを減らす橋渡しができる。", "C": "宗教施設の職員・博物館学芸員・出版編集者・中高教員・研究者"}, {"id": "religion_2", "name": "哲学", "desc": "「正しいとは何か」「自分とは何か」といった答えのない問いを、自分の頭で筋道立てて考える訓練をする。すぐ答えを出すより、なぜそう言えるのかを最後まで問いたい人に向く。となりの宗教が実際の信仰を扱うのに対し、哲学は信じるかどうかに関係なく理屈だけで物事を突き詰める。", "L": "物事を疑い、根拠を示して論理的に考え、議論を組み立てる力を学べる。", "S": "新しい技術やルールが本当に人を幸せにするのか判断に迷う場面で、立ち止まって考える筋道を示せる。", "C": "シンクタンク研究員・編集者・公務員・中高教員・コンサルタント"}, {"id": "religion_3", "name": "倫理", "desc": "嘘をついていい場面はあるか、命をどこまで助けるべきかなど、人がどう行動すべきかの善悪を具体的な場面で考える。理屈だけでなく「現実でどう決めるか」に関心がある人に向く。となりの哲学が幅広い問いを扱うのに対し、倫理は医療や環境など実際の行動の善し悪しにしぼって考える。", "L": "医療・環境・AIなど現代の難しい問題で、何が良い行動かを判断する考え方を学べる。", "S": "延命治療や個人情報の扱いで関係者の意見が割れたとき、患者や家族が納得できる決め方を整理できる。", "C": "病院の倫理委員・行政職員・NPO職員・企業のコンプライアンス担当・教員"}, {"id": "religion_4", "name": "日本思想", "desc": "日本人が昔から大切にしてきた考え方や感じ方が、神道・仏教・武士の生き方を通じてどう育ったかを学ぶ。日本の伝統や、自分たちの「当たり前」のルーツを知りたい人に向く。となりの宗教が世界全体を見るのに対し、日本思想は日本という一つの地域の歴史と心の動きにしぼって深く掘る。", "L": "和歌・禅・武士道など、日本独自の価値観や美意識がどう生まれたかを学べる。", "S": "海外に日本文化を紹介する場面で、上辺でなく背景まで伝えて誤解なく理解してもらえる。", "C": "学芸員・観光ガイド・出版編集者・伝統文化の継承者・教員"}], "archaeology": [{"id": "archaeology_1", "name": "考古学", "desc": "土の中に埋もれた遺跡や土器・石器を発掘し、昔の人がどう暮らしていたかを調べる。地面を掘って自分の手で証拠を見つけたい人に向いている。隣の文化財保存学が「見つかったモノを守る」のに対し、こちらは「掘って探し出す・年代や使い方を読み解く」ところが中心。", "L": "発掘調査の方法、出土品から時代や暮らしを推理する読み解き方を学ぶ。", "S": "開発工事で見つかった遺跡を壊す前に正しく記録し、地域の歴史を消さずに残したいという自治体や住民の困りごとを解決する。", "C": "埋蔵文化財調査員・学芸員・発掘調査会社スタッフ・研究者・教員"}, {"id": "archaeology_2", "name": "文化財保存修復", "desc": "古い仏像・絵画・建物などを、傷んだ部分を直しながら長く残せるように手入れする。細かい作業が好きで、モノを大切に扱える人に向いている。考古学が「掘って探す」のに対し、こちらは「すでにある宝物を科学の力で守り直す」点が違う。", "L": "絵具や木材・金属の傷み方と、薬品や道具を使った修復の技術を学ぶ。", "S": "古いお寺の仏像や昔の絵がボロボロになって困っている所有者や寺社が、次の世代まで実物を残せるようにする。", "C": "文化財修復技術者・博物館保存担当・美術品コンサバター・学芸員"}, {"id": "archaeology_3", "name": "民俗・文化人類学", "desc": "祭りや方言、暮らしの習わしなど、形に残りにくい人々の文化を聞き取りや現地調査で記録する。人の話を聞くのが好きで、各地に出かけたい人に向いている。考古学が「土の中のモノ」を扱うのに対し、こちらは「今も生きている人の暮らしや言い伝え」を扱う点が違う。", "L": "フィールドワークでの聞き取りや観察を通して、地域文化の成り立ちを記録・分析する方法を学ぶ。", "S": "消えかけている地域の祭りや方言を、地元の人たちが記録に残し次の世代へ受け継げるよう手助けする。", "C": "博物館学芸員・自治体文化振興職員・観光企画・研究者・教員"}, {"id": "archaeology_4", "name": "歴史遺産・文化財活用", "desc": "城跡や町並みなどの文化財を観光やまちづくりに活かし、地域を元気にする方法を考える。歴史も好きで、人を呼ぶ企画やまちづくりに興味がある人に向いている。考古学や保存が「調べる・守る」のに対し、こちらは「守ったものを今の地域でどう使うか」を考える点が違う。", "L": "文化財を観光・教育・地域おこしに結びつける企画や運営の方法を学ぶ。", "S": "人口が減って元気をなくした地域が、地元の城跡や古い町並みを使って観光客を呼び、誇りと収入を取り戻せるようにする。", "C": "観光協会職員・自治体文化振興職員・博物館スタッフ・まちづくりプランナー・旅行会社"}], "human_sciences": [{"id": "human_sciences_1", "name": "臨床心理", "desc": "人の悩みや心の不調が、どんなときに・なぜ起きるのかを学ぶ。話を聞いて相手の気持ちを言葉にする練習を重ねるので、人の心の動きをじっくり観察するのが好きな人に向いている。同じ人間科学でも、社会のしくみを見る「社会学」と違い、目の前の一人の内面に焦点をあてる。", "L": "カウンセリングの技法や、不安・ストレスが起きる心のしくみを学べる。", "S": "不登校で学校に行けない子や、職場で心が疲れた大人が、相談できる相手にたどりつけない困りごとを減らせる。", "C": "公認心理師・スクールカウンセラー・病院の心理職・児童相談所職員・人事"}, {"id": "human_sciences_2", "name": "社会学", "desc": "いじめ・格差・SNSの炎上など、たくさんの人が集まると生まれる出来事のしくみを学ぶ。アンケートや街での聞き取りで「なぜそうなるのか」を調べるので、ニュースの裏側が気になる人に向いている。一人の心を見る「臨床心理」と違い、集団や社会の流れそのものを見る。", "L": "アンケート調査やデータの読み方で、社会の動きを分析する力が身につく。", "S": "自治体が「若者がなぜこの町を出ていくのか」を理由がわからないまま対策できず困っている状況を、調査で解きほぐせる。", "C": "市役所・公務員・マスコミ記者・市場調査会社・NPO職員"}, {"id": "human_sciences_3", "name": "健康スポーツ科学", "desc": "体を動かすことが心や健康にどう効くのかを、運動や栄養の面から学ぶ。実際に体を動かしてデータを取る授業が多いので、スポーツや体のしくみに興味がある人に向いている。心を言葉で扱う「臨床心理」と違い、体という具体的なものを通して人間に近づく。", "L": "運動が体や気持ちに与える効果と、健康づくりの指導法を学べる。", "S": "運動不足や生活習慣で体調を崩したお年寄りや働く人が、無理なく続けられる運動を見つけられない困りごとに応えられる。", "C": "保健体育教員・健康運動指導士・フィットネストレーナー・スポーツ用品メーカー・福祉施設職員"}, {"id": "human_sciences_4", "name": "教育学", "desc": "人がどうやって学び、育っていくのかと、それを支える学校や家庭のしくみを学ぶ。子どもと関わる実習や授業づくりの練習があるので、人が成長する場面に立ち会いたい人に向いている。心の治療を扱う「臨床心理」と違い、教え方や育つ環境そのものを設計する側に立つ。", "L": "子どもの発達段階に合わせた教え方や、学びの場のつくり方を学べる。", "S": "勉強についていけない子や、外国にルーツのある子が、教室で取り残されてしまう困りごとに向き合える。", "C": "小中学校教員・学習塾講師・教育委員会職員・教材会社・児童福祉職"}], "liberal_arts": [{"id": "liberal_arts_1", "name": "日本文学", "desc": "日本語で書かれた物語や詩、昔の作品から現代の小説まで読み込んで、その意味や時代背景を考える。本を読んで「なぜこの言葉を選んだのか」を語り合うのが好きな人に向いている。となりの英語・英文が外国語の作品を扱うのに対して、こちらは日本語の作品そのものを深く掘り下げる。", "L": "日本の古典から現代までの作品を、言葉や時代と結びつけて読み解く方法を学ぶ。", "S": "古い文書や方言が読めず地域の歴史を語り継げない図書館員や郷土研究者の困りごとを、原文を正しく読み解いて支える。", "C": "国語教員・編集者・司書・学芸員・日本語教師"}, {"id": "liberal_arts_2", "name": "英語・英文", "desc": "英語の文章や小説を読み、英語を話す国の文化や考え方を学ぶ。外国の人と話したり、英語の本を原文で読みたい人に向いている。日本文学が日本語作品を扱うのに対し、こちらは英語そのものと英語圏の文化を中心に学ぶ。", "L": "英語の読み書き会話と、英語圏の文学・文化・歴史を学ぶ。", "S": "海外と取引したい中小企業が、契約書や問い合わせの英語を正しく扱えず商談を逃す困りごとを解決する。", "C": "英語教員・通訳・翻訳者・貿易事務・外資系企業社員"}, {"id": "liberal_arts_3", "name": "哲学・倫理", "desc": "「正しさとは何か」「人は何のために生きるか」といった答えのない問いを、筋道を立てて考える。すぐに結論を出すより、いろいろな立場を比べて考えるのが好きな人に向いている。文学が作品を読むのに対して、こちらは考え方そのものの組み立て方を鍛える。", "L": "物事を根本から問い直し、論理的に考えて議論する力を学ぶ。", "S": "AIや医療の現場で「どこまでやってよいか」の線引きに迷う担当者の判断を、考え方の整理で支える。", "C": "公務員・記者・出版編集者・倫理コンサルタント・教員"}, {"id": "liberal_arts_4", "name": "歴史・地域文化", "desc": "昔の出来事や各地の暮らし・風習を、史料や現地調査から調べてまとめる。旅先で古いものを見ると「これはいつのもの?」と気になる人に向いている。文学が言葉の作品を扱うのに対し、こちらは実際に起きた出来事やモノを証拠として扱う。", "L": "史料や遺物をもとに、過去の出来事や地域の文化を調べて伝える方法を学ぶ。", "S": "観光客に町の魅力を説明できず人が来ない地方自治体の困りごとを、地域の歴史を掘り起こして解決する。", "C": "学芸員・公務員・観光プランナー・教員・文化財調査員"}], "culture_studies": [{"id": "culture_studies_1", "name": "日本文学", "desc": "昔の物語や和歌、現代の小説まで、日本語で書かれた作品を読み込んで、その意味や時代背景を考える学科。本を読んで「なぜこの言葉を選んだのか」を考えるのが好きな人に向いている。となりの『文化財・歴史遺産』が建物やモノを扱うのに対し、こちらは言葉と文章そのものを手がかりにする。", "L": "古典から現代までの作品を読み解き、作者の表現や時代背景を分析する方法を学ぶ。", "S": "地域に埋もれた古い手紙や日記を読める人が減っている問題に対し、昔の文章を現代の人にも分かる形で伝えられる。", "C": "国語教員・図書館司書・出版/編集者・学芸員・日本語教師"}, {"id": "culture_studies_2", "name": "文化財・歴史遺産", "desc": "お寺や古い建物、お祭りの道具など、地域に残るモノやならわしを調べて守る学科。古い物を見て「これはいつ、誰が、何のために作ったのか」を知りたい人に向いている。となりの『民俗・人類』が今生きている人の暮らしを観察するのに対し、こちらは残された現物を調査し保存する技術を扱う。", "L": "文化財の年代や価値を調べる方法と、傷んだものを守り次に残す保存の技術を学ぶ。", "S": "後継者がいなくて壊れたり捨てられたりする地方のお寺や祭り道具を、調査して記録し守る手助けができる。", "C": "学芸員・文化財保護の公務員・博物館スタッフ・観光ガイド・保存修復技術者"}, {"id": "culture_studies_3", "name": "民俗・人類", "desc": "地域ごとのお祭り、方言、食べ方など、人々の暮らしの習慣を現地に行って観察し記録する学科。知らない土地に出かけて人の話を聞くのが好きな人に向いている。となりの『日本文学』が書かれた本を読むのに対し、こちらは今を生きる人の生活そのものを調べる。", "L": "現地に行って人々の暮らしや習慣を聞き取り、記録してまとめる方法を学ぶ。", "S": "過疎で消えそうな村の盆踊りや方言を、住民から聞き取って記録し、次の世代に伝える手助けができる。", "C": "研究者・自治体の文化担当・観光企画・記者/ライター・博物館スタッフ"}, {"id": "culture_studies_4", "name": "地域文化・観光", "desc": "その土地ならではの食や工芸、景色などの魅力を見つけ、外の人に伝えて人を呼ぶ仕組みを考える学科。地元のよさを人に紹介したり企画を立てるのが好きな人に向いている。となりの『民俗・人類』が習慣を調べて記録するのに対し、こちらは調べた魅力を使って人を集め地域を元気にする実践を扱う。", "L": "地域の魅力を整理して伝える方法と、観光やイベントで人を呼ぶ企画の立て方を学ぶ。", "S": "人が減って元気のない町の商店や宿が、地元の特産や文化を生かしてお客さんを呼び込むのを手伝える。", "C": "観光協会職員・自治体の地域おこし担当・旅行会社・イベント企画・まちづくりNPO"}], "law": [{"id": "law_1", "name": "公法・行政法", "desc": "国や市役所がどんなルールで動くか、税金や許可、選挙の仕組みを学ぶ。役所の決定に納得できない人を助けたい人に向いている。民法系が個人どうしのトラブルを扱うのに対し、ここは国や行政と国民の間の関係を扱う。", "L": "憲法・行政手続き・国や自治体の権限と国民の権利の関係を学べる。", "S": "生活保護や保育園の入所を不当に断られた人が、行政に対して正しい手続きで異議を申し立てられるよう支える。", "C": "公務員・国家公務員・地方議員秘書・行政書士・弁護士"}, {"id": "law_2", "name": "民事法", "desc": "お金の貸し借り、契約、相続、離婚など、人と人の間で起きるもめごとのルールを学ぶ。身近なトラブルを筋道立てて解決したい人に向いている。国を相手にする公法系と違い、扱うのは個人や会社どうしの争いごとが中心。", "L": "契約・損害賠償・家族や相続をめぐる権利と義務の決まりを学べる。", "S": "アパートの敷金を返してもらえない人や、遺産分けでもめている家族が、法律にもとづいて公平に話をまとめられるよう手助けする。", "C": "弁護士・司法書士・裁判所事務官・企業の法務担当・不動産関連職"}, {"id": "law_3", "name": "刑事法", "desc": "どんな行為が犯罪になり、どんな手続きで裁かれるかを学ぶ。罪を犯した人の更生や、被害者の立場の両方に関心がある人に向いている。お金や契約の争いを扱う民事法と違い、ここは犯罪と刑罰、警察や裁判の手続きを扱う。", "L": "犯罪の成り立ち・刑罰・捜査や裁判が公正に行われる仕組みを学べる。", "S": "無実なのに疑われた人が不当に罰せられないようにし、また犯罪の被害にあった人が裁判で守られるようにする。", "C": "検察官・裁判官・弁護士・警察官・刑務官"}, {"id": "law_4", "name": "国際法", "desc": "国どうしの約束ごとや、国境をこえた取引・人権のルールを学ぶ。外国や世界の問題に関わりたい人に向いている。国内のルールを扱う他の分野と違い、ここは複数の国にまたがる問題やルールづくりを扱う。", "L": "条約・国際取引・難民や人権など国をまたぐ問題のルールを学べる。", "S": "外国に逃れてきた難民や、海外と取引する会社が、国際的な決まりにもとづいて不利益を受けないよう支える。", "C": "外交官・国際機関職員・商社の海外法務・通商関連の公務員・NPO職員"}], "politics": [{"id": "politics_1", "name": "政治", "desc": "国や地方の物事がどんなルールで決まるかを学ぶ。選挙のしくみや、議会で法律ができる流れ、政党の動きなどを調べる。ニュースで「なぜこの政策が通ったのか」が気になる人に向く。国どうしの関係を見る『国際関係』と違い、こちらは主に自分の国の中の決め方に目を向ける。", "L": "選挙・議会・政党のしくみと、政策が決まっていく過程。", "S": "投票率が低くて自分の声が政治に届かないと感じる若者に、選挙や政策がどう動くかを伝え、参加しやすくする。", "C": "国家公務員・地方公務員・議員秘書・新聞記者・政策シンクタンク職員"}, {"id": "politics_2", "name": "国際関係", "desc": "国と国がどうつながり、ときに対立するのかを学ぶ。戦争や平和、貿易、環境問題など、一国だけでは解決できないことを扱う。海外のニュースや世界地図を見るのが好きな人に向く。自分の国の中を見る『政治』と違い、こちらは国境をまたいだ関係に目を向ける。", "L": "国際機関のしくみ、外交、紛争や平和のつくられ方。", "S": "国どうしの対立や難民問題で困っている人々のために、話し合いで解決する道筋を考える。", "C": "外交官・国際機関職員・NGO職員・商社社員・国際ジャーナリスト"}, {"id": "politics_3", "name": "地域政策", "desc": "市町村など身近な地域の課題を、行政と住民が一緒にどう解決するかを学ぶ。人口減少、空き家、バスの廃止といった生活に近い問題を扱う。自分の町を良くしたい人に向く。世界を見る『国際関係』と違い、こちらは目の前の地域に目を向ける。", "L": "まちづくりの計画づくりと、行政と住民の協力のしかた。", "S": "バスが減って買い物に行けないお年寄りのために、地域でどう移動手段を支えるかを設計する。", "C": "市町村職員・まちづくりNPO職員・都市計画コンサルタント・地方議員・地域おこし協力隊"}, {"id": "politics_4", "name": "法律", "desc": "社会のルールである法律を読み解き、使えるようになることを学ぶ。契約のトラブルや、犯罪と刑罰、人の権利などを扱う。約束やルールの『なぜ』を筋道立てて考えるのが好きな人に向く。決め方そのものを見る『政治』と違い、こちらは決まったルールをどう適用するかに目を向ける。", "L": "憲法・民法・刑法などの条文の読み方と、もめごとの解決手順。", "S": "お金や契約のトラブルで泣き寝入りしそうな人のために、法律にもとづく正しい解決方法を示す。", "C": "裁判官・弁護士・検察官・公務員・企業の法務担当"}], "economics": [{"id": "economics_1", "name": "経済", "desc": "モノやお金が世の中をどう動いているかを、数字やグラフを使って読み解く。景気がよくなったり物価が上がったりする仕組みを、社会全体という大きな目線で考えたい人に向いている。お金の流れそのものを学ぶ点で、会社の中身を見る『経営』や、お金のやりとりの計算ルールを学ぶ『会計・ファイナンス』とは目線の高さが違う。", "L": "景気・物価・貿易など、社会全体でお金とモノが動く仕組み。", "S": "値上げや失業で生活が苦しい人たちに対して、なぜそれが起きるのかを説明し、政府や日銀がどう手を打てばよいかを考える助けになる。", "C": "銀行員・公務員・シンクタンク研究員・新聞記者・大学院進学"}, {"id": "economics_2", "name": "経営", "desc": "会社が商品を売って利益を出し、長く続いていくための工夫を学ぶ。お店や会社をうまく回したい、人をまとめたいと考える人に向いている。社会全体を見る『経済』と違い、一つの会社の中の人・お金・モノのやりくりに目を向ける点が違う。", "L": "会社の経営戦略・組織のまとめ方・商品の売り方。", "S": "売上が伸びず潰れそうな町の小さな会社に対して、どこを直せば客が増え社員が辞めずに済むかを一緒に考えられる。", "C": "会社員(企画・営業)・起業家・経営コンサルタント・人事担当・家業の後継者"}, {"id": "economics_3", "name": "会計・ファイナンス", "desc": "会社のお金がどこから入り、どこへ出ていくかを記録し、お金を増やす投資の仕組みを学ぶ。数字をきちんと合わせるのが好きで、お金の管理を任されたい人に向いている。会社全体の運営を考える『経営』と違い、お金の数字そのものを正確に扱う技術に絞っている点が違う。", "L": "帳簿のつけ方・決算書の読み方・お金を運用する仕組み。", "S": "お金の出入りがどんぶり勘定で赤字に気づけない経営者や、貯金をどう増やすか迷う人に、数字で正しい判断材料を渡せる。", "C": "公認会計士・税理士・経理担当・銀行や証券会社の社員・ファイナンシャルプランナー"}, {"id": "economics_4", "name": "国際経済", "desc": "国と国がモノやお金をやりとりする貿易や、海外で起きる経済の動きを学ぶ。外国とのつながりや世界のニュースに興味があり、英語を使って働きたい人に向いている。国内中心に景気を見る『経済』と違い、為替や輸出入など国境をまたぐお金の流れに目を向ける点が違う。", "L": "貿易の仕組み・為替(円高円安)・海外と日本の経済のつながり。", "S": "円安で輸入品が高くなり困る店や、海外に商品を売りたいのにやり方がわからない中小企業の悩みに答えられる。", "C": "商社員・貿易会社社員・外資系企業社員・国際機関職員・通関士"}], "business": [{"id": "business_1", "name": "経営", "desc": "会社をどう動かすかを学ぶ。人の配置、お金の流れ、商品の売り方など、組織を回す仕組みを全体で考える。お店や会社の「リーダー役」をやってみたい人に向く。同じ商学系でも会計が数字の記録を、マーケが売り方を深掘りするのに対し、経営はそれらをまとめて舵を取る役割を学ぶ。", "L": "組織・人・お金・戦略を組み合わせて事業全体を動かす考え方を学べる。", "S": "売上が伸びず人手も足りない町の中小企業が、何から手をつければ立て直せるか分からない、という悩みに道筋を示せる。", "C": "経営企画・起業/家業の後継ぎ・コンサルタント・銀行員・店舗マネージャー"}, {"id": "business_2", "name": "会計・ファイナンス", "desc": "会社のお金の出入りを正しく記録し、健康かどうかを数字で読む方法を学ぶ。コツコツ計算したり、ごまかしを見抜いたりするのが好きな人に向く。売り方を考える経営やマーケと違い、ここは「お金の真実」を扱い、会社が黒字か赤字かをはっきりさせる土台を担う。", "L": "簿記・決算書の読み方や、投資・資金の集め方といったお金の専門技術を学べる。", "S": "数字に弱い小さな会社の社長が、自分の店が本当に儲かっているのか分からず不安、という困りごとを解消できる。", "C": "公認会計士・税理士・経理/財務・証券アナリスト・銀行融資担当"}, {"id": "business_3", "name": "マーケティング", "desc": "「どうすれば買ってもらえるか」を学ぶ。お客さんが何を欲しがっているかを調べ、商品の見せ方や広告、値段を工夫する。流行や人の気持ちに興味がある人に向く。お金を記録する会計と違い、こちらは商品とお客さんの間をつなぎ、売れる流れそのものを作る側を学ぶ。", "L": "市場や消費者の調査、ブランド作り、広告・販売の仕組みを学べる。", "S": "良い商品なのに知られず売れない地方メーカーが、誰にどう届ければ買ってもらえるか分からない、という課題を解決できる。", "C": "商品企画・広告/PR・市場調査員・販売促進担当・ECサイト運営"}, {"id": "business_4", "name": "経営情報", "desc": "会社の仕事をコンピュータやデータの力でうまく回す方法を学ぶ。プログラミングほど技術一辺倒ではなく、ビジネスとITの橋渡しを考える。パソコンも経営も両方気になる人に向く。人や戦略を扱う経営とは違い、ここはデータやシステムを使って現場の無駄を減らす視点を学ぶ。", "L": "データ分析や情報システムを使って業務を効率化する方法を学べる。", "S": "紙の手作業に追われて残業が減らない会社の事務員が、どこをデジタル化すれば楽になるか分からない、という困りごとを助けられる。", "C": "ITコンサルタント・データアナリスト・システム企画・社内SE・業務改善担当"}], "sociology": [{"id": "sociology_1", "name": "家族社会学", "desc": "結婚や子育て、親子関係、ひとり親家庭など「家族のかたち」がどう変わってきたかを調べる。自分の家のことや友達の家庭環境に「なんでだろう」と感じたことがある人に向く。となりの都市社会学が町や地域を見るのに対して、こちらは一つひとつの家の中の関係に踏み込む。", "L": "時代や国による家族のかたちの違いと、その背景にある仕組みを学べる。", "S": "共働きで子育てに悩む親や、家族の介護を一人で抱える人の困りごとを、社会の支え方として考える。", "C": "公務員（福祉・子育て支援）・NPO職員・研究者・新聞記者・人材会社"}, {"id": "sociology_2", "name": "都市・地域社会学", "desc": "シャッター街になった商店街や、人が集まる新しい町が、なぜそうなるのかを調べる。住んでいる町の様子に興味があったり、地元を元気にしたいと思う人に向く。となりの家族社会学が家の中を見るのに対して、こちらは町全体や住民どうしのつながりを見る。", "L": "町がにぎわったり寂れたりする理由と、地域の人をつなぐ方法を学べる。", "S": "若者が出ていって元気がなくなった地方の町で、暮らす人が住み続けられる仕組みを考える。", "C": "自治体職員・まちづくり団体スタッフ・不動産企画・コンサルタント・地域おこし協力隊"}, {"id": "sociology_3", "name": "メディア・情報社会学", "desc": "SNSで話題が広がるしくみや、ニュースが人の考えに与える影響を調べる。スマホやネットの情報に振り回されたり、逆に楽しんだりした経験から「なぜ?」を感じる人に向く。となりの福祉社会学が困っている人を支える制度を見るのに対し、こちらは情報の流れと人の行動を見る。", "L": "情報がどう広がり、人々の意見や行動をどう動かすかを学べる。", "S": "デマやネットの炎上で傷つく人や、間違った情報を信じてしまう人の困りごとに向き合う。", "C": "広告・マーケティング・テレビ/出版・ウェブ企業・広報担当"}, {"id": "sociology_4", "name": "福祉社会学", "desc": "高齢者や障害のある人、貧しさで困る人を社会がどう支えるかを調べる。困っている人をほうっておけない、仕組みから助けたいと思う人に向く。となりのメディア社会学が情報の流れを見るのに対し、こちらは生活に困る人と支援制度の関係を見る。", "L": "年金や生活保護など、人の暮らしを支える社会の仕組みを学べる。", "S": "収入が少なくて生活が苦しい人や、頼れる家族がいない高齢者が安心して暮らせる方法を考える。", "C": "社会福祉士・公務員（福祉）・介護/医療機関・NPO職員・社会保険関係"}], "social_welfare": [{"id": "social_welfare_1", "name": "社会福祉", "desc": "高齢者・障害のある人・子どもなど、生活に困りごとを抱える人を支える制度と支援の方法を学ぶ。人と直接かかわって寄り添うのが好きな人に向いている。社会保障など仕組みを設計する公共政策より、目の前の一人をどう支えるかという現場の援助技術に重きを置く。", "L": "相談援助の進め方、介護・障害・高齢などの福祉制度、生活に困った人への支援計画の立て方を学ぶ。", "S": "介護が必要になった高齢者や、一人で手続きできない人が、どの制度を使えばよいか分からず孤立してしまう困りごとを支える。", "C": "社会福祉士・スクールソーシャルワーカー・福祉施設の相談員・自治体の福祉職員・地域包括支援センター職員"}, {"id": "social_welfare_2", "name": "社会保障・公共政策", "desc": "年金・医療保険・生活保護といった、国や自治体が用意する仕組みそのものを学ぶ。制度の数字や設計を考えるのが好きな人に向いている。一人ひとりに直接寄り添う社会福祉と違い、社会全体をどう支える仕組みにするかという広い視点で考える。", "L": "年金・医療・雇用などの社会保障制度の仕組みと、税や財源をどう配分するかの考え方を学ぶ。", "S": "病気や失業で収入が途絶えた人が、生活費や医療費の心配なく暮らせるよう、社会全体で支える仕組みを整える困りごとに取り組む。", "C": "公務員（福祉・労働行政）・社会保険労務士・自治体職員・シンクタンク研究員・NPO職員"}, {"id": "social_welfare_3", "name": "子ども・家庭福祉", "desc": "虐待や貧困など、家庭の中で起きる子どもの困りごとと、その支援のしかたを学ぶ。子どもや親子に寄り添いたい人に向いている。大人全般を支える社会福祉のうち、特に育つ過程にある子どもと、その家庭に焦点を絞る点が違う。", "L": "児童虐待や子どもの貧困への対応、保育や里親など子どもを守る制度のしくみを学ぶ。", "S": "親が頼れず孤立した家庭で、十分にケアされない子どもが安心して育つ場や支援につながれない困りごとを支える。", "C": "児童福祉司・保育士・児童養護施設職員・スクールソーシャルワーカー・家庭裁判所調査官"}, {"id": "social_welfare_4", "name": "精神保健福祉", "desc": "心の病気や依存症を抱える人が、治療を受けながら地域で暮らしていけるよう支える方法を学ぶ。医療と生活の両方に関心がある人に向いている。福祉一般より「こころの不調」を抱える人に絞り、病院や医療チームと連携する点で他と違う。", "L": "精神疾患のある人への相談援助、医療機関との連携、地域で暮らすための支援のしかたを学ぶ。", "S": "うつや統合失調症などで働けなくなった人が、退院後に行き場を失い社会から孤立してしまう困りごとを支える。", "C": "精神保健福祉士・病院の医療ソーシャルワーカー・就労支援事業所の支援員・保健所職員・地域活動支援センター職員"}], "math": [{"id": "math_1", "name": "純粋数学", "desc": "代数・幾何・解析など、数そのものの仕組みや図形の性質を証明で突き詰める。答えが一つに決まる問題をじっくり考えるのが好きな人に向く。すぐに役立つ計算より「なぜそうなるか」を証明したい点で、応用や統計の学科とは違う。", "L": "数や図形の性質を、論理を積み重ねて証明する考え方を学ぶ。", "S": "暗号やセキュリティの研究者が、銀行やネット通信の情報を盗まれないようにする仕組みの土台を作れる。", "C": "数学教員・大学研究者・暗号技術者・システムエンジニア・アクチュアリー"}, {"id": "math_2", "name": "応用数学", "desc": "気象・橋の揺れ・人口の変化などを数式（方程式）に置き換えて、コンピュータで計算し予測する。現実の問題を数で表すのが好きな人に向く。証明そのものを目的にする純粋数学と違い、現実で使える答えを出すことを重視する。", "L": "現実の現象を数式に直し、計算で予測・最適化する方法を学ぶ。", "S": "防災担当者が、台風や洪水がどこまで広がるかを事前に計算して避難を呼びかけられる。", "C": "研究開発技術者・気象データ解析・金融工学スタッフ・ソフトウェア開発・大学研究者"}, {"id": "math_3", "name": "統計・データサイエンス", "desc": "たくさんのデータから傾向や規則を読み取り、確かなことと偶然を見分ける。アンケートや実験の数字を整理して説明するのが好きな人に向く。式を証明する数学より、現実のばらつきあるデータから判断を導く点が特徴。", "L": "データの集め方・読み方と、AIに学習させる統計の基礎を学ぶ。", "S": "お店の経営者が、売上データから売れ筋を見抜き、無駄な仕入れや食品ロスを減らせる。", "C": "データサイエンティスト・統計解析員・AIエンジニア・マーケティングリサーチ・品質管理"}], "physics": [{"id": "physics_1", "name": "理論物理", "desc": "数式とモデルを使って、宇宙の始まりや素粒子のふるまいなど、目に見えない世界のしくみを説明する学科です。実験よりも紙とコンピュータで考えるのが好きな人、数学が得意な人に向いています。となりの実験系と違って、自分で装置を動かすより理屈を組み立てる方が中心になります。", "L": "相対性理論や量子力学などの理論を数式で組み立てて理解する。", "S": "新しい材料やエネルギーを作る研究者が「なぜそうなるのか」を計算で確かめたいときの土台を提供する。", "C": "研究者・大学教員・データサイエンティスト・システムエンジニア・中学高校教員"}, {"id": "physics_2", "name": "応用物理", "desc": "物理の法則を使って、スマホの半導体や太陽電池、レーザーなど実際に役立つ装置を作る学科です。手を動かしてモノづくりや実験をするのが好きな人に向いています。理論物理が「なぜか」を考えるのに対し、こちらは「どう使うか」に重きを置きます。", "L": "半導体やレーザーなど、物理を活かした装置や材料の作り方を学ぶ。", "S": "電気をもっと省エネで使いたいメーカー技術者の、性能の良い部品づくりの困りごとに応える。", "C": "電機メーカー技術者・半導体エンジニア・材料開発者・特許関連職・研究者"}, {"id": "physics_3", "name": "宇宙・天文", "desc": "星や銀河、ブラックホールなど宇宙そのものを望遠鏡や観測データで調べる学科です。夜空や宇宙のニュースにワクワクする人、根気よくデータを見るのが苦にならない人に向いています。理論や装置づくりが目的の他学科と違い、観測対象が地球の外にあるのが特徴です。", "L": "望遠鏡や人工衛星のデータから、星や宇宙の成り立ちを読み解く。", "S": "気象や災害を予測したい人が頼る人工衛星やセンサー技術の、観測精度を上げる課題に貢献する。", "C": "天文研究者・宇宙開発技術者(JAXA等)・プラネタリウム解説員・気象関連職・科学館スタッフ"}, {"id": "physics_4", "name": "物理工学", "desc": "物理の知識を機械やエネルギー設備など大きな仕組みに応用し、安全で効率の良い設計につなげる学科です。乗り物や発電の仕組みに興味があり、チームでモノを動かしたい人に向いています。応用物理が小さな素子寄りなのに対し、こちらは発電所や輸送など社会の大きな仕組みを扱います。", "L": "熱や流体、力学を使ってエネルギー設備や機械を設計する力を学ぶ。", "S": "電力会社や交通機関が、事故を減らし無駄なくエネルギーを使いたいという困りごとを解決する。", "C": "プラントエンジニア・エネルギー会社技術者・自動車設計者・原子力技術者・公務員(技術職)"}], "chemistry": [{"id": "chemistry_1", "name": "有機化学", "desc": "炭素を中心にした分子のつくりや反応を学ぶ。プラスチック、薬、染料など身のまわりの素材がどう作られるかを扱う。新しい物質を自分の手で組み立てたい人に向く。となりの分析化学が「測る・調べる」のに対し、有機化学は「作る」側に重点がある。", "L": "炭素化合物の構造と合成反応のしくみを学べる。", "S": "病気で困っている患者のために、効きめが高く副作用の少ない新しい薬の候補物質を設計できる。", "C": "製薬研究者・化学メーカー開発職・化粧品研究者・大学研究者・高校理科教員"}, {"id": "chemistry_2", "name": "分析化学", "desc": "物の中に何がどれだけ入っているかを正確に測る方法を学ぶ。食品の添加物や川の水の汚れ、血液の成分などを機械を使って調べる。細かい数字や正確さにこだわる人に向く。有機化学が物質を作るのに対し、分析化学はその物質を見分け・量を測ることが中心。", "L": "成分を検出し量を測定する機器と手法を学べる。", "S": "工場排水に有害物質が混じっていないか調べ、近くに住む人の健康被害を未然に防げる。", "C": "品質管理職・食品分析技術者・環境調査員・科学捜査研究員・分析機器メーカー社員"}, {"id": "chemistry_3", "name": "応用化学", "desc": "化学の知識を使って役に立つ製品や材料を作ることを学ぶ。電池やフィルム、接着剤など工業製品の中身を設計し、工場で大量に作る方法も考える。ものづくりで世の中を便利にしたい人に向く。有機化学が分子の研究中心なのに対し、応用化学は製品化・実用化まで踏み込む。", "L": "材料や製品を設計し工業生産につなげる技術を学べる。", "S": "スマホをもっと長く使いたい人のために、軽くて長持ちする新しい電池材料を開発できる。", "C": "素材メーカー開発職・電池技術者・化学プラント技術者・特許技術者・生産管理職"}, {"id": "chemistry_4", "name": "生命化学", "desc": "生き物の体の中で起きている化学反応を学ぶ。食べ物がエネルギーになるしくみや、遺伝子・タンパク質のはたらきを分子のレベルで調べる。生き物と化学の両方に興味がある人に向く。応用化学が工業製品を扱うのに対し、生命化学は生体内の分子や反応が対象。", "L": "体内の物質変化や遺伝・酵素のしくみを学べる。", "S": "原因のわからない病気で苦しむ人のために、体内で何が起きているかを分子レベルで突き止められる。", "C": "バイオ研究者・食品開発職・医薬品研究者・検査技師・大学研究者"}], "biology": [{"id": "biology_1", "name": "分子生物学", "desc": "細胞やDNA、たんぱく質といった目に見えないミクロな部品が、どう動いて生き物を成り立たせているかを実験で調べる。顕微鏡や試験管の作業が好きで、しくみを根っこから知りたい人に向く。となりの生態学が森や池など大きな世界を見るのに対し、こちらは細胞の中という一番小さな世界を見る。", "L": "遺伝子やたんぱく質のはたらきと、それを調べる実験のやり方。", "S": "がんや遺伝の病気で困っている患者さんに、原因の仕組みから新しい薬や検査をつくる手がかりを出せる。", "C": "製薬会社の研究員・大学や研究所の研究者・臨床検査技師・バイオ企業の技術者・食品メーカー開発"}, {"id": "biology_2", "name": "生態学", "desc": "森・川・海で、動物や植物がどうつながって暮らし、人の活動がそれをどう変えるかを野外で観察して調べる。外に出て生き物を追ったり数えたりするのが好きな人に向く。分子生物学が細胞の中を見るのに対し、こちらは生き物どうしや自然全体のつながりを見る。", "L": "生き物と環境の関わり方、種の数や分布の調べ方。", "S": "絶滅しそうな動物や荒れた森を守りたい自治体や地域の人に、どう手を入れれば回復するかを示せる。", "C": "環境コンサルタント・自然保護団体職員・公務員(環境部局)・動物園や水族館の飼育員・国立公園レンジャー"}, {"id": "biology_3", "name": "農学・植物科学", "desc": "イネや野菜などの作物が、どうすればよく育ち病気に強くなるかを、品種改良や栽培の実験を通して調べる。食べ物づくりや植物そのものに興味がある人に向く。生態学が自然のままの生き物を見るのに対し、こちらは人が育てて役立てる植物を中心に扱う。", "L": "作物の育て方・品種改良・土や肥料のしくみ。", "S": "天候不順や害虫で収穫が減って困る農家に、丈夫で多く採れる品種や栽培法を届けられる。", "C": "種苗会社の研究員・農業法人や農協職員・食品メーカー・公務員(農業普及員)・農業高校教員"}, {"id": "biology_4", "name": "微生物学", "desc": "細菌・ウイルス・カビなど目に見えない小さな生き物が、人や食べ物にどう関わるかを培養実験で調べる。発酵食品や感染症のしくみに興味がある人に向く。分子生物学が生き物の部品を見るのに対し、こちらは微生物という一個の生き物そのものを扱う。", "L": "細菌やウイルスの育て方・性質と、その制御のしかた。", "S": "食中毒や感染症の流行に困る病院や食品工場に、原因の特定と防ぐ方法を提供できる。", "C": "食品メーカーの品質管理・製薬会社の研究員・臨床検査技師・醸造や発酵企業の技術者・検疫や保健所の職員"}], "earth": [{"id": "earth_1", "name": "地球科学", "desc": "地面の下や山・川・海がどうやってできたかを学ぶ。岩石や地層を調べて、何億年も前の地球の様子を読み解く。気象や防災を扱うとなりの学科が「空や災害」を見るのに対し、こちらは主に「大地そのもの」のなりたちを見る。石や地形に興味があり、長い時間の変化を考えるのが好きな人に向いている。", "L": "岩石・地層・火山・地震から地球の歴史と仕組みを読み解く方法。", "S": "地盤の弱い土地に家を建てたい人が、地震や土砂崩れの危険を事前に知れずに困る問題を、地質調査で減らせる。", "C": "地質調査技術者・博物館学芸員・資源探査会社・公務員（防災)・研究者"}, {"id": "earth_2", "name": "大気・気象", "desc": "空気の動きや雲のでき方を調べて、天気や気候を予測する方法を学ぶ。台風や大雨がいつどこに来るかを数字で読むのが中心。大地を扱う地球科学と違い、こちらは「空とその変化」が対象になる。天気の移り変わりが気になり、数学や物理で自然を説明するのが好きな人に向いている。", "L": "気象観測のデータとコンピュータを使って天気や気候を予測する技術。", "S": "農家が大雨や霜の時期を読めずに作物をだめにしてしまう困りごとを、精度の高い予報で防ぐ手助けになる。", "C": "気象予報士・気象庁職員・防災コンサルタント・航空気象担当・研究者"}, {"id": "earth_3", "name": "環境科学", "desc": "水・土・空気のよごれや生き物への影響を調べ、自然を守る方法を学ぶ。地球の成り立ちより「人の活動が環境にどう影響するか」を見るのが特徴。気象が天気予測なら、こちらは汚染や生態系などの環境問題が中心。自然を守りたい気持ちと、化学や生物の知識を結びつけたい人に向いている。", "L": "水質や大気のよごれを測り、自然環境を回復・保全する方法。", "S": "川の近くに住む人が工場排水で水が汚れて困る問題を、汚染の原因調査と対策で改善できる。", "C": "環境分析技術者・自治体の環境職・環境コンサルタント・NPO職員・研究者"}, {"id": "earth_4", "name": "防災・減災", "desc": "地震・津波・洪水などの災害から人やまちを守る仕組みを学ぶ。災害そのものの研究だけでなく、避難の方法やまちづくりまで人を守る側を考えるのが特徴。地質や気象が「現象を知る」なら、こちらは「人をどう守るか」が中心になる。人の命を守る仕事に関心があり、理科と社会の両方に興味がある人に向いている。", "L": "災害の起こり方と、被害を減らすまちづくりや避難計画のつくり方。", "S": "津波が来る地域の住民が、どこへどう逃げればよいかわからず命を落とす危険を、避難計画づくりで減らせる。", "C": "自治体の防災担当・建設コンサルタント・消防・損害保険会社・研究者"}], "mechanical": [{"id": "mechanical_1", "name": "機械システム", "desc": "歯車やエンジン、ロボットの腕など「動く仕組み」を、力のかかり方や材料の強さを計算しながら設計する。模型を組み立てたり、なぜ壊れるのかを考えるのが好きな人に向いている。電気で制御する側ではなく、物そのものの形と動きを作るのが中心という点で「制御」とは違う。", "L": "力学・材料・機械要素をもとに動く装置を設計する技術を学ぶ。", "S": "工場で働く人が、すぐ壊れたり重すぎたりする機械に困っている状況を、丈夫で扱いやすい設計で解決する。", "C": "機械設計エンジニア・自動車メーカー技術者・生産技術職・特許関連職"}, {"id": "mechanical_2", "name": "ロボット・制御", "desc": "ロボットや機械が「自分で考えて正しく動く」ための、センサーとプログラムによる調整のしくみを学ぶ。機械を思い通りに動かす指示づくりに興味がある人に向いている。物の形を作る「機械システム」と違い、動きを賢く操る頭脳の部分を担当する点が分かれ目。", "L": "センサーで状況を読み取り機械を自動で動かす制御技術を学ぶ。", "S": "人手が足りない介護や倉庫の現場で、重い物の運搬や見守りをロボットが代わりに行えるようにする。", "C": "ロボット開発エンジニア・自動制御技術者・FA機器メーカー職・組込みエンジニア"}, {"id": "mechanical_3", "name": "航空宇宙", "desc": "飛行機やロケットなど、空や宇宙を飛ぶ乗り物の形と飛び方を、空気の流れや軽さを意識して設計する。空を飛ぶ仕組みや宇宙にあこがれる人に向いている。地上で使う機械が中心の他学科と違い、軽く安全に飛ぶことを最優先に考える点が特徴。", "L": "空気力学や軽量構造をもとに飛行する機体を設計する技術を学ぶ。", "S": "遠くへ早く安全に移動したい人や、災害地に物資を届けたい現場の困りごとを、飛行機やドローンの設計で支える。", "C": "航空機メーカー技術者・宇宙開発技術者・ドローン開発職・整備設計職"}, {"id": "mechanical_4", "name": "エネルギー・熱", "desc": "エンジンの燃焼や冷暖房など、熱や流れの力をムダなく使う仕組みを学ぶ。お湯が冷める理由や燃費の良さに関心がある人に向いている。物の形を作る学科と違い、目に見えない熱やエネルギーの流れを扱い、効率を上げることを中心に考える。", "L": "熱・流体・エネルギー変換のしくみを使い装置の効率を高める技術を学ぶ。", "S": "電気代や燃料費の高さに困る家庭や工場に、より少ないエネルギーで動く機器を提供する。", "C": "プラント技術者・空調機器エンジニア・自動車パワートレイン職・エネルギー会社技術職"}], "ee": [{"id": "ee_1", "name": "電気工学", "desc": "発電所から家のコンセントまで、大きな電気をつくり・送り・安全に使う仕組みを学ぶ。停電を起こさない送電網や、モーターを回す技術を扱う。となりの『電子工学』が小さな部品の中の電気を相手にするのに対し、こちらは街全体を動かすような大きな電力を相手にする。", "L": "発電・送電・モーターなど大きな電力を安全に扱う技術。", "S": "地域住民が台風や地震のあとも停電せず電気を使い続けられるよう、壊れにくい電力網をつくる困りごとに応える。", "C": "電力会社の技術者・電気主任技術者・電機メーカー設計・鉄道の電気技術者・設備設計"}, {"id": "ee_2", "name": "電子工学", "desc": "スマホやテレビの中にある小さな部品(半導体やセンサー)が、どう電気で動くかを学ぶ。米粒より小さな回路に何億もの部品を詰める世界。となりの『電気工学』が街の大きな電力を扱うのに対し、こちらは指先サイズの小さな電気信号と部品づくりを相手にする。", "L": "半導体やセンサーなど小さな電子部品の設計と仕組み。", "S": "スマホや家電メーカーが、より小さく安く長持ちする部品を作れず製品を安くできない困りごとを解決する。", "C": "半導体メーカー技術者・家電設計・自動車部品エンジニア・センサー開発・回路設計"}, {"id": "ee_3", "name": "情報通信", "desc": "電波や光ケーブルを使って、声や動画やデータを遠くまで速く正確に届ける仕組みを学ぶ。スマホがつながる4G・5GやWi-Fiの中身を扱う。となりの『電子工学』が部品そのものを作るのに対し、こちらは部品をつないで『情報を運ぶ道』をどう設計するかを相手にする。", "L": "電波や光で大量のデータを速く正確に送る通信技術。", "S": "離島や山間部に住む人が都市と同じ速さでネットや動画を使えない通信格差の困りごとに応える。", "C": "通信会社のネットワーク技術者・通信機器メーカー・スマホ開発・放送局技術・基地局エンジニア"}, {"id": "ee_4", "name": "制御・メカトロニクス", "desc": "電気でロボットや機械を思い通りに動かす技術を学ぶ。センサーで状況を読み、モーターを正確に動かして自動化する。となりの『電気工学』が電力そのものを送るのに対し、こちらは電気・機械・プログラムを組み合わせて『動きを賢く操る』ことを相手にする。", "L": "センサーとモーターで機械やロボットを自動で正確に動かす技術。", "S": "人手不足の工場や農家が、危険・単調な作業を機械に任せて安全に働けない困りごとを解決する。", "C": "ロボット開発技術者・工場自動化エンジニア・自動車制御開発・産業機械メーカー・組込みエンジニア"}], "civil": [{"id": "civil_1", "name": "土木工学", "desc": "道路・橋・トンネル・ダムなど、暮らしを支える大きな構造物の設計やつくり方を学ぶ。コンクリートや地盤の強さを計算して、安全で長持ちするものを考えるのが好きな人に向いている。となりの「都市・環境デザイン」がまち全体の配置や景観を考えるのに対し、こちらは個々の構造物そのものを丈夫につくる技術が中心。", "L": "橋やトンネルなどの構造物を安全に設計・施工するための力学と材料の知識。", "S": "古くなった橋やトンネルが壊れて、通勤や物流に使う人が危険にさらされる問題を、点検と補強の技術で防ぐ。", "C": "建設会社の技術者(施工管理)・建設コンサルタント・公務員(土木職)・橋やダムの設計技術者"}, {"id": "civil_2", "name": "都市・環境デザイン", "desc": "住む人が暮らしやすいように、道路や公園や住宅の配置、まち全体の形を計画する方法を学ぶ。地図を見て「この場所をどう使えば便利になるか」を考えるのが好きな人に向いている。となりの「土木工学」が一つ一つの構造物を丈夫につくるのに対し、こちらはまち全体をどう並べて使うかを描くのが中心。", "L": "人が住みやすいまちの配置や交通の流れを計画する都市計画の手法。", "S": "駅前に店や住宅がバラバラに建って暮らしにくくなった地域で、住民が買い物や通院をしやすいまちに整え直す。", "C": "都市計画コンサルタント・公務員(都市計画職)・不動産デベロッパー・交通計画の技術者"}, {"id": "civil_3", "name": "防災・減災工学", "desc": "地震や洪水、土砂崩れなどの災害から人や建物を守る仕組みを学ぶ。「もし大きな災害が来たらどうなるか」を予測して、被害を小さくする方法を考えるのが好きな人に向いている。となりの「土木工学」が普段使う構造物をつくるのに対し、こちらは災害が起きたときに備える堤防や避難の仕組みづくりが中心。", "L": "地震や水害の被害を予測し、堤防や避難計画で被害を減らす技術。", "S": "川のそばに住む人が大雨のたびに浸水で家財を失う問題を、堤防やハザードマップの整備で減らす。", "C": "防災コンサルタント・公務員(防災・河川管理職)・気象や水文の研究職・建設会社の防災技術者"}, {"id": "civil_4", "name": "環境・水工学", "desc": "上下水道や河川の水をきれいに保ち、人が安全に水を使えるようにする仕組みを学ぶ。蛇口の水がどこから来てどう処理されるかに興味がある人に向いている。となりの「防災・減災工学」が水害から守ることに重点を置くのに対し、こちらは普段の水の供給や浄化、自然環境を守ることが中心。", "L": "飲み水や排水をきれいに循環させる上下水道と水処理の仕組み。", "S": "下水処理が追いつかず川や海が汚れて、漁業や水遊びをする人が困る問題を、浄化技術で改善する。", "C": "水道局・公務員(環境・上下水道職)・プラント設計技術者・環境コンサルタント・水処理メーカー技術者"}], "architecture": [{"id": "architecture_1", "name": "建築設計", "desc": "住宅やビル、公共施設などの建物を、どう使うか・どう見えるかから考えてかたちにする。間取りや光の入り方、人の動きを想像して図面を描くのが好きな人に向いている。となりの構造工学が「建物が壊れないか」を計算で支えるのに対し、こちらは「どんな空間にするか」という見た目と使い心地そのものを決める。", "L": "空間のかたち・間取り・デザインを図面と模型で形にする方法を学ぶ。", "S": "保育園や高齢者施設で、子どもや車いすの人が安全で過ごしやすい間取りがほしいという困りごとに応える。", "C": "建築士・設計事務所スタッフ・ハウスメーカー設計担当・インテリアデザイナー・公務員（営繕）"}, {"id": "architecture_2", "name": "建築構造・耐震", "desc": "地震や台風、建物自身の重さに耐えて倒れない骨組みを、計算で確かめながら設計する。数学や物理で「なぜ壊れないか」を突き詰めるのが好きな人に向いている。建築設計が空間の見た目や使い方を決めるのに対し、こちらは目に見えない柱や梁の強さを数字で保証する役割。", "L": "力の流れや地震の揺れを計算し、安全な骨組みを設計する方法を学ぶ。", "S": "地震が多い地域で暮らす家族が、大きな揺れでも家がつぶれず命を守れる住まいがほしいという不安に応える。", "C": "構造設計者・ゼネコン技術者・耐震診断士・建設コンサルタント・研究者"}, {"id": "architecture_3", "name": "都市・環境計画", "desc": "1棟の建物ではなく、街全体の道路・公園・住宅の配置や、防災・人の流れをまとめて考える。地図を見て「この街をもっと暮らしやすくしたい」と思う人に向いている。建築設計が建物の中身を扱うのに対し、こちらは建物と建物のあいだ、街のつながり方を設計する。", "L": "街づくり・交通・防災・景観をまちの単位で計画する方法を学ぶ。", "S": "お年寄りが増えた町で、買い物や病院に歩いて行けて災害時も避難しやすい街にしたいという地域の願いに応える。", "C": "都市計画コンサルタント・自治体のまちづくり職員・デベロッパー・交通計画技術者・ランドスケープデザイナー"}, {"id": "architecture_4", "name": "建築環境・設備", "desc": "建物の中の温度・光・空気・音を快適にし、冷暖房や換気、省エネのしくみを設計する。「夏でも涼しく電気代が安い家にするには」と仕組みを工夫するのが好きな人に向いている。建築設計が空間のかたちを決めるのに対し、こちらはそのなかで人が心地よく過ごせる環境を技術でつくる。", "L": "空調・照明・断熱・省エネを物理と設備技術でととのえる方法を学ぶ。", "S": "光熱費の高さや夏の暑さで困っている家庭に、少ないエネルギーで快適に暮らせる住まいを届ける。", "C": "設備設計者・空調エンジニア・省エネコンサルタント・建材メーカー技術者・環境系研究者"}], "materials": [{"id": "materials_1", "name": "応用化学", "desc": "薬・化粧品・電池の材料など、化学反応を使って役立つ物質を新しく作る方法を学ぶ。実験で色や反応が変わる瞬間が好きな人に向いている。となりの材料工学が「すでにある材料の強さや性質」を扱うのに対し、ここは反応で新しい分子そのものを生み出すのが中心。", "L": "目的の性質を持つ物質を、化学反応を設計して合成する方法。", "S": "薬を作る研究者が、副作用の少ない新しい薬の成分を効率よく合成できずに困っている状況を解決する。", "C": "化学メーカー研究職・製薬会社・化粧品開発・食品メーカー・特許技術者"}, {"id": "materials_2", "name": "材料工学", "desc": "金属やセラミックスなど、ものを作る材料がなぜ強いか・なぜ壊れるかを学ぶ。スマホや車の部品の中身が気になる人に向いている。応用化学が物質を「作り出す」側なら、こちらは作られた材料を「丈夫に・軽く・長持ちさせる」ように性質を整える側。", "L": "材料の内部構造を調べ、強さ・軽さ・熱への強さを設計する方法。", "S": "飛行機メーカーの技術者が、軽くて壊れにくい機体の材料が見つからず燃費を下げられない困りごとを解決する。", "C": "自動車メーカー・鉄鋼会社・電機メーカー材料技術・航空宇宙・材料試験技術者"}, {"id": "materials_3", "name": "高分子・化学工学", "desc": "プラスチックやゴムなどの大きな分子を扱い、実験室の小さな成功を工場の大量生産につなげる方法を学ぶ。ものづくりの段取りや効率を考えるのが好きな人に向いている。応用化学が「何を作るか」なら、ここは「どうやって安く大量に安全に作るか」という装置や工程の設計が中心。", "L": "化学製品を工場で安全かつ効率よく大量生産する工程と装置の設計。", "S": "工場の生産管理者が、新製品を作りたいのに大量生産すると品質がばらつき採算が合わない困りごとを解決する。", "C": "化学プラント技術者・素材メーカー生産技術・エネルギー会社・食品プラント・環境エンジニア"}, {"id": "materials_4", "name": "環境・資源化学", "desc": "汚れた水や排ガスをきれいにしたり、捨てられる資源を再利用する化学を学ぶ。環境やリサイクルの問題を技術で何とかしたい人に向いている。他の学科が新しいものを作るのが中心なのに対し、ここは出てしまった廃棄物や限りある資源をどう循環させるかに重点を置く。", "L": "汚染物質を除去し、廃棄物や資源を再利用する化学技術。", "S": "工場の周辺に住む人が、排水や排ガスによる汚染を心配せず暮らせるよう環境負荷を減らす困りごとを解決する。", "C": "環境分析会社・水処理エンジニア・リサイクル技術者・自治体の環境職・素材メーカー環境部門"}], "info_cs": [{"id": "info_cs_1", "name": "情報工学", "desc": "コンピュータそのものの仕組みや、プログラムを速く正確に動かす方法を学ぶ。アプリやゲームを「自分の手で動くものとして作りたい」人に向いている。AIの中身を作るより、AIや他のソフトを動かす土台（コンピュータの仕組みや処理の流れ）を作るのが中心という点で、人工知能とは役割が分かれる。", "L": "プログラミング、アルゴリズム、コンピュータの構造、OSやネットワークの基礎を学べる。", "S": "お店の予約システムがすぐ止まる、アプリの動作が遅いといった「使う人がイライラする不便」を、安定して速く動く仕組みで解決する。", "C": "ソフトウェアエンジニア・システムエンジニア・アプリ開発者・組み込みエンジニア・ITコンサルタント"}, {"id": "info_cs_2", "name": "人工知能", "desc": "大量のデータからコンピュータに「見分ける・予想する」力を持たせる方法を学ぶ。画像を見分けたり言葉を理解する仕組みそのものに興味がある人に向いている。完成したソフトを作る情報工学に対して、その中で「賢く判断する部分」をどう作るかに集中する点が違う。", "L": "機械学習、ディープラーニング、画像認識や自然言語処理、データの数学的な扱い方を学べる。", "S": "レントゲン写真から病気の見落としを減らしたい医師や、膨大な書類を毎日読む担当者の「人手では追いつかない判断」を、AIの予測で支える。", "C": "AIエンジニア・機械学習エンジニア・データサイエンティスト・研究者・画像/音声認識開発者"}, {"id": "info_cs_3", "name": "情報セキュリティ", "desc": "データやシステムを、盗む人や壊す人から守る方法を学ぶ。「どうすれば破られるか」を考えて先回りで防ぐ、守る側の発想が好きな人に向いている。作る・賢くするより「守る」が主役で、攻撃の手口を知ったうえで弱点を塞ぐところが他学科と違う。", "L": "暗号、不正アクセスの防ぎ方、攻撃の手口とその対策、安全なシステム設計を学べる。", "S": "クレジットカード情報や個人情報が盗まれて困る利用者や、サイバー攻撃で業務が止まる会社の「漏れる・壊される不安」を防ぐ。", "C": "セキュリティエンジニア・ホワイトハッカー・セキュリティコンサルタント・システム監査・インシデント対応担当"}, {"id": "info_cs_4", "name": "データサイエンス", "desc": "集まったデータを整理・分析して、人が判断に使える形にする方法を学ぶ。数字やグラフから「何が起きているか」を読み解くのが好きな人に向いている。AIを作る人工知能と近いが、こちらはAIだけでなく統計やビジネスの視点で「結果を人に説明し意思決定につなげる」ところに重きを置く。", "L": "統計、データの集計と可視化、分析プログラミング、結果の伝え方を学べる。", "S": "どの商品をどれだけ仕入れるか毎回迷う店長や、効果のわからない施策に悩む担当者の「勘に頼るしかない判断」を、データの根拠で支える。", "C": "データアナリスト・データサイエンティスト・マーケティングリサーチャー・経営企画・BIエンジニア"}], "info_system": [{"id": "info_system_1", "name": "情報システム", "desc": "会社や店で使うシステムを設計して動かす技術を学ぶ。たとえば予約サイトや在庫管理の仕組みを、止まらず安全に動くように作る練習をする。プログラムを書く力に加えて、サーバーやネットワークの土台を整える側に立つ。データの中身を分析する『データサイエンス』とは違い、こちらは仕組みそのものを組み立てて運用するのが中心。手順をきちんと整えるのが好きな人に向いている。", "L": "システムの設計・開発・運用と、サーバーやネットワークなど動かす土台の知識。", "S": "病院や役所で予約や記録のシステムが古くて使いにくく、職員が手作業に追われている困りごとを、新しい仕組みで減らせる。", "C": "システムエンジニア・インフラエンジニア・社内SE・ITコンサルタント・プログラマー"}, {"id": "info_system_2", "name": "経営情報", "desc": "会社の経営とITの両方を学び、どこに技術を入れれば仕事が楽になるかを考える。簿記や経営の基礎を学びながら、現場の困りごとを聞いて改善案を出す練習をする。自分で全部プログラムを書くより、人と話して問題を見つけ整理する側に立つ。仕組みを作る『情報システム』との違いは、こちらは『何を作るべきか』を決める手前の部分を担うところ。人の話を聞くのが好きな人に向いている。", "L": "経営や会計の基礎と、業務の問題をITで改善する進め方。", "S": "中小企業の社長が、紙とエクセルがばらばらで売上の全体が見えず判断に迷う困りごとを、業務の整理とIT導入で見えるようにできる。", "C": "ITコンサルタント・業務改善担当・営業企画・社内DX推進・経営企画"}, {"id": "info_system_3", "name": "データサイエンス", "desc": "たくさんの数字や記録から、隠れた傾向を見つける方法を学ぶ。たとえば店の売上データから『何曜日に何が売れるか』を統計やプログラムで読み解く。仕組みを動かす『情報システム』と違い、こちらは集まったデータを分析して次の判断材料を作るのが中心。数学やパズルのように、理由を考えて答えを探すのが好きな人に向いている。", "L": "統計とプログラミングを使ってデータから役立つ傾向を読み解く方法。", "S": "農家が天気や過去の収穫の記録を活かしきれず、いつ何を植えるか勘に頼っている困りごとを、データ分析で予測しやすくできる。", "C": "データサイエンティスト・データアナリスト・AIエンジニア・マーケティングリサーチャー・品質管理"}, {"id": "info_system_4", "name": "情報セキュリティ", "desc": "システムやデータを攻撃や情報漏れから守る方法を学ぶ。たとえばパスワードの仕組みや、悪意ある侵入をどう防ぐかを実際に試しながら身につける。仕組みを作る『情報システム』に対して、こちらは作られた仕組みを安全に保つ守りの側に立つ。細かい点に気づき、最悪の場合を想定して備えるのが得意な人に向いている。", "L": "暗号やネットワークの守り方と、攻撃を見つけて防ぐ技術。", "S": "学校や会社が個人情報の流出やウイルス被害を恐れて対策に困っている問題を、守る仕組みづくりで防げる。", "C": "セキュリティエンジニア・ホワイトハッカー・SOCアナリスト・システム監査・ネットワーク管理者"}], "media": [{"id": "media_1", "name": "メディアデザイン", "desc": "写真・動画・グラフィック・Webなど、見た目で情報を伝える方法を学ぶ。色や文字の配置を工夫して「ぱっと見て分かる」ものをつくりたい人に向いている。同じ親学科でも、映像制作が物語や動きを軸にするのに対し、ここはレイアウトや配色など静止した画面づくりが中心になる。", "L": "色・文字・写真・レイアウトを使って、情報を分かりやすく美しく見せるデザインの技術。", "S": "お店のチラシやアプリ画面が見づらくて「どこを押せばいいか分からない」高齢者や初めての利用者の困りごとを、見やすい設計で解決する。", "C": "グラフィックデザイナー・Webデザイナー・UI/UXデザイナー・広告制作・編集者"}, {"id": "media_2", "name": "映像・放送", "desc": "ドラマ・ドキュメンタリー・CM・ネット動画などの撮影や編集を学ぶ。カメラを回したり、場面をつないで物語をつくることが好きな人に向いている。デザインが止まった画面の見せ方なら、こちらは時間の流れや音をどう組み立てるかが軸になる。", "L": "カメラ撮影・編集・音響・演出など、動く映像で人の心を動かす作り方。", "S": "言葉だけでは伝わりにくい災害時の避難方法や商品の使い方を、映像にして外国人や子どもにも一目で分かるようにする。", "C": "映像クリエイター・テレビ局スタッフ・動画編集者・カメラマン・YouTube制作"}, {"id": "media_3", "name": "ゲーム・インタラクティブ", "desc": "ゲームやアプリのように、使う人が触って反応する仕組みづくりを学ぶ。プレイヤーが楽しめるルールや遊びの流れを考えるのが好きな人に向いている。映像が見るだけのものなのに対し、こちらは相手の操作に合わせて変化する「やりとり」を設計する点が違う。", "L": "ゲームのルール設計・プログラミング・キャラクターの動きなど、人が触って楽しむ仕組みづくり。", "S": "勉強や運動が続かない子どもの「つまらなくてやめてしまう」問題を、遊びの仕掛けで楽しく続けられるようにする。", "C": "ゲームプランナー・ゲームプログラマー・アプリ開発・XR制作・サウンドクリエイター"}, {"id": "media_4", "name": "ジャーナリズム・編集", "desc": "出来事を取材して、記事や番組として正しく分かりやすく伝える方法を学ぶ。気になったことを調べて人に知らせたい人に向いている。デザインや映像が「見せ方」の技術なら、こちらは何が事実かを確かめて言葉でまとめる「中身づくり」が軸になる。", "L": "取材・文章の書き方・事実確認など、情報を正しく集めて伝える力。", "S": "ネットにうわさやデマがあふれて「何が本当か分からない」読者の不安を、裏取りした正確な情報を届けて解消する。", "C": "新聞記者・雑誌編集者・Webライター・広報担当・テレビ報道スタッフ"}], "medicine": [{"id": "medicine_1", "name": "医", "desc": "病気を診断して、薬や手術で治す方法を学ぶ。患者と直接向き合い、命に関わる判断をする責任を負う仕事に向いている人に向く。となりの看護が患者の生活や心のケアを担うのに対し、医は病気そのものの原因を見つけて治療方針を決める役割を担う。", "L": "人体のしくみ、病気の原因と診断、薬や手術による治療法を学ぶ。", "S": "原因のわからない不調に苦しむ患者に、検査で病名を突き止めて治療を届ける困りごとを解決する。", "C": "医師(内科・外科など)・研究医・産業医・公衆衛生の専門家"}, {"id": "medicine_2", "name": "看護", "desc": "患者の体調を毎日見守り、注射や処置をしながら不安に寄り添う方法を学ぶ。人の小さな変化に気づき、誰かを支えることにやりがいを感じる人に向いている。医が病気を治す判断をするのに対し、看護は治療を受ける人の生活と心を一番近くで支える役割を担う。", "L": "患者のケア、注射や採血などの処置、急変時の対応や心理的な支え方を学ぶ。", "S": "入院中の高齢者が一人で食事やトイレもつらいとき、24時間そばで支えて回復を助ける困りごとを解決する。", "C": "看護師・保健師・助産師・養護教諭(保健室の先生)"}, {"id": "medicine_3", "name": "リハビリ", "desc": "病気やけがで動きにくくなった体を、訓練でもう一度動かせるようにする方法を学ぶ。粘り強く相手の回復に付き合い、少しずつの変化を喜べる人に向いている。看護が日々の体調管理を担うのに対し、リハビリは歩く・話す・手を使うといった「できること」を取り戻すことに集中する。", "L": "運動や言葉の訓練法、体のしくみ、回復を助ける器具や生活動作の工夫を学ぶ。", "S": "脳卒中で手足が動かなくなった人が、また自分で歩いて家に帰りたいという困りごとを解決する。", "C": "理学療法士・作業療法士・言語聴覚士・スポーツトレーナー"}, {"id": "medicine_4", "name": "薬", "desc": "薬がどう体に効くか、危険な飲み合わせをどう防ぐかを学ぶ。化学や細かい確認作業が好きで、間違いを許さない正確さを大事にできる人に向いている。医が薬を処方するのに対し、薬はその薬が本当に安全で正しいかを最後にチェックし、患者に渡す役割を担う。", "L": "薬の成分と効き方、飲み合わせの危険、新しい薬を作る研究や調剤の技術を学ぶ。", "S": "複数の病院から薬をもらう高齢者が、危険な飲み合わせで体調を崩さないよう守る困りごとを解決する。", "C": "薬剤師・製薬会社の研究開発者・治験コーディネーター・登録販売者"}], "nursing": [{"id": "nursing_1", "name": "看護", "desc": "病気やけがの人が回復に向かうのを、注射や処置だけでなく食事・睡眠・不安のケアまで含めて支える方法を学ぶ。患者さんと毎日言葉をかわすのが好きで、細かい変化に気づける人に向いている。となりの『保健』が地域や学校で病気を防ぐ側なのに対し、ここは目の前にいる病んでいる人を直接ケアするのが中心。", "L": "病気やけがの人を回復まで支える看護の技術と、心と体の両面のケアを学ぶ。", "S": "入院した人や高齢で動けない人が、痛みや不安をかかえたまま放置されず、安心して療養できる困りごとを解決する。", "C": "看護師・保健師・助産師・養護教諭・訪問看護師"}, {"id": "nursing_2", "name": "保健", "desc": "病気になってから治すのではなく、病気にならないよう地域や職場、学校全体の健康を守る仕組みを学ぶ。一人より集団のデータや環境を見て動くのが好きな人に向いている。となりの『看護』が個人をケアするのに対し、ここは『町ぐるみ・会社ぐるみ』で健康を底上げする視点が中心。", "L": "地域や集団の健康を守り、病気を予防する公衆衛生の考え方を学ぶ。", "S": "検診を受けない人や生活習慣病が増える地域で、住民が早く異変に気づき重症化を防げない困りごとを解決する。", "C": "保健師・養護教諭・公衆衛生スタッフ・行政の健康担当・産業保健師"}, {"id": "nursing_3", "name": "助産", "desc": "妊娠から出産、産後の母親と赤ちゃんを支える専門を学ぶ。新しい命が生まれる場面に立ち会いたい、母親に寄り添いたい人に向いている。となりの『看護』が病気の人全般を見るのに対し、ここは妊婦と新生児という限られた相手を深く専門的に支える点が違う。", "L": "妊娠・出産・産後の母子を支え、安全なお産を助ける技術を学ぶ。", "S": "出産に不安をかかえる妊婦や、産後に孤立して育児に悩む母親が、そばで支えてもらえない困りごとを解決する。", "C": "助産師・看護師・母子保健スタッフ・産後ケア施設職員・性教育の講師"}, {"id": "nursing_4", "name": "リハビリ看護", "desc": "病気やけがのあと、できなくなった動作を少しずつ取り戻していく時期の支えを学ぶ。すぐ結果が出なくても根気よく付き合える人に向いている。となりの『看護』が急な治療の時期を支えるのに対し、ここは退院後や慢性的な障害とともに『その人らしい生活に戻る』長い過程を支える点が中心。", "L": "病気やけがのあと、生活機能を取り戻していく人を長く支える看護を学ぶ。", "S": "脳卒中や事故のあと体が思うように動かず、自宅での暮らしに戻れず孤立する人の困りごとを解決する。", "C": "看護師・回復期病棟スタッフ・訪問看護師・介護施設の看護職・地域包括ケアの担当"}], "rehab_pt": [{"id": "rehab_pt_1", "name": "理学療法", "desc": "けがや病気で歩く・立つ・腕を動かすといった体の基本動作が難しくなった人に、運動やリハビリで回復を手伝う方法を学ぶ。スポーツや体の仕組みに興味があり、毎日コツコツ伴走するのが好きな人に向いている。となりの作業療法が料理や着替えなど暮らしの細かい動作を扱うのに対し、こちらは歩く・関節を動かすといった体そのものの動きの土台を担当する。", "L": "運動や物理的な刺激を使って、体の動きを取り戻すリハビリの理論と技術を学ぶ。", "S": "脳卒中で半身が動かなくなった高齢者や、骨折後の患者が、自分の足でまた歩けるようになる困りごとを助ける。", "C": "理学療法士・病院やクリニックのリハビリ職・介護施設の機能訓練指導員・スポーツチームのトレーナー・訪問リハビリ"}, {"id": "rehab_pt_2", "name": "作業療法", "desc": "食事・着替え・料理・仕事や趣味など、暮らしの中の具体的な活動が一人でできるよう手助けする方法を学ぶ。手先の作業や生活の工夫が好きで、相手のやりたいことに寄り添える人に向いている。となりの理学療法が歩く・動かすという体の土台を扱うのに対し、こちらはその先の「日常生活や心の活動をどう取り戻すか」に重点を置く。", "L": "日常の動作や手作業、心のケアを通して、その人らしい生活を取り戻す支援を学ぶ。", "S": "事故で手が不自由になった人や、こころの病気で外出できなくなった人が、また自分で生活し社会に戻れるよう支える。", "C": "作業療法士・精神科や整形外科のリハビリ職・発達支援施設の職員・福祉用具の相談員・就労支援スタッフ"}, {"id": "rehab_pt_3", "name": "言語聴覚", "desc": "話す・聞く・飲み込むことが難しくなった人に、言葉やコミュニケーション、食べる力を取り戻す支援を学ぶ。人の話し方や声、子どもの言葉の発達に関心がある人に向いている。理学療法や作業療法が手足や生活動作を扱うのに対し、こちらは言葉・耳・口といった「伝える・食べる」機能に特化している。", "L": "言葉の発達やことばの障害、聞こえ、飲み込みの仕組みと、その回復を助める方法を学ぶ。", "S": "脳の病気で言葉が出にくくなった人や、うまく話せない子ども、食べ物をのどに詰まらせやすい高齢者の困りごとを助ける。", "C": "言語聴覚士・病院のリハビリ職・小児発達支援センターの職員・補聴器や難聴の相談員・特別支援教育の支援員"}], "judo_therapy": [{"id": "judo_therapy_1", "name": "柔道整復", "desc": "骨折・脱臼・打撲・捻挫など、ケガをした体に手で施術して回復を助ける。スポーツでケガをした人や、転んで痛めた高齢者を支えたい人に向いている。鍼やお灸ではなく、骨や関節・筋肉のケガを手当てや固定で治す点が、となりの鍼灸とちがう。", "L": "骨や関節・筋肉のケガを、手当て・包帯・固定で回復させる技術を学ぶ。", "S": "部活でケガをした高校生や、転んで骨を痛めたお年寄りが、すぐ近くで体を診てもらえる場所がない困りごとを解決する。", "C": "柔道整復師・接骨院/整骨院スタッフ・スポーツトレーナー・整形外科の助手・独立開業"}, {"id": "judo_therapy_2", "name": "鍼灸", "desc": "細い鍼やお灸でツボを刺激し、肩こり・腰痛・冷えなど体の不調をやわらげる。薬に頼りすぎたくない人や、東洋医学に興味がある人に向いている。ケガそのものを固定して治す柔道整復とちがい、体の内側の巡りや痛みを整えるのが中心。", "L": "鍼やお灸でツボを刺激し、痛みや不調をやわらげる東洋医学の技術を学ぶ。", "S": "病院の薬では取りきれない慢性的な肩こりや腰痛、冷えに悩む人が、体への負担が少ない方法で楽になれるようにする。", "C": "はり師・きゅう師・鍼灸院スタッフ・美容鍼の施術者・スポーツ現場のケアスタッフ・独立開業"}, {"id": "judo_therapy_3", "name": "理学療法", "desc": "病気やケガのあとに弱った体を、運動やリハビリで動けるように戻す。歩く・立つといった日常の動作を取り戻す手助けをしたい人に向いている。手で施術する柔道整復や鍼灸とちがい、医師の指示のもとで運動プログラムを組んで回復させるのが特徴。", "L": "運動やリハビリで、弱った体の動きを取り戻す訓練の方法を学ぶ。", "S": "脳卒中や骨折のあとうまく歩けなくなった人が、もう一度自分の足で生活できるように支える。", "C": "理学療法士・病院/リハビリ施設のスタッフ・介護施設の機能訓練指導員・スポーツリハビリ担当"}, {"id": "judo_therapy_4", "name": "スポーツ健康", "desc": "体の仕組みや運動・栄養の知識を使い、ケガの予防や健康づくりを支える。スポーツが好きで、人が元気に動ける体づくりを応援したい人に向いている。ケガや不調を治す柔道整復・鍼灸・理学療法とちがい、そもそも体を壊さない・健康を保つ予防の側に立つ。", "L": "運動・栄養・体の仕組みの知識で、ケガの予防や健康づくりを支える方法を学ぶ。", "S": "運動不足で体調を崩しやすい人や、ケガを繰り返す選手が、健康的に体を動かし続けられるようにする。", "C": "スポーツインストラクター・アスレティックトレーナー・健康運動指導士・部活動の外部指導員・フィットネス施設スタッフ"}], "pharmacy": [{"id": "pharmacy_1", "name": "薬学（6年制）", "desc": "病院や薬局で患者さんに薬を渡し、飲み合わせや副作用を確認する薬剤師になるための6年間の勉強をする。人の話をよく聞き、間違いなく確認する作業が苦にならない人に向いている。新しい薬を作る「創薬科学」が研究中心なのに対し、こちらは「患者さんに正しく使ってもらう」現場の仕事が中心。", "L": "薬の効き方・副作用・調剤と、患者さんへの服薬指導を学ぶ。", "S": "飲んでいる薬が多くて飲み間違える高齢者や、薬の重複に気づかない患者さんの事故を防ぐ。", "C": "薬剤師・病院薬剤師・ドラッグストア薬剤師・製薬会社のMR・行政の薬務担当"}, {"id": "pharmacy_2", "name": "創薬科学（4年制）", "desc": "まだ世の中にない新しい薬の候補を、化学や生物の実験で探し出す研究をする。実験を何度も繰り返して原因を突き止めるのが好きな人に向いている。薬剤師を目指す6年制が「患者さんに使う」側なのに対し、こちらは「薬そのものを生み出す」研究側に進む。", "L": "薬になりそうな物質の設計・合成と、体の中での効き方の研究を学ぶ。", "S": "治る薬がまだない病気（難病やがんなど）で苦しむ患者さんに、新しい治療の選択肢を届ける。", "C": "製薬会社の研究職・大学や研究機関の研究者・バイオ企業の開発職・大学院進学"}, {"id": "pharmacy_3", "name": "衛生・薬品分析", "desc": "食品や水、空気、化粧品などに有害なものが入っていないかを実験で測り、安全を確かめる勉強をする。細かい数値を正確に測り、ルール通りに調べるのが得意な人に向いている。薬を扱う他の学科と違い、対象が「薬」より「生活環境や食品の安全」まで広いのが特徴。", "L": "食品・水・薬品に含まれる成分や毒物を分析し、安全基準を確かめる方法を学ぶ。", "S": "食品の異物混入や水の汚染を見逃して、消費者が健康被害を受けることを防ぐ。", "C": "食品メーカーの品質管理・検査機関の分析職・公務員（保健所・食品衛生監視員）・化粧品会社の安全担当"}, {"id": "pharmacy_4", "name": "漢方・生薬", "desc": "植物や鉱物などの自然のものから作る漢方薬について、その成分や体への効き方を学ぶ。植物や昔ながらの知恵に興味があり、地道に調べるのが好きな人に向いている。化学で作る西洋薬を扱う他の学科と違い、自然由来の薬と東洋医学の考え方を中心に学ぶ。", "L": "生薬や漢方薬の成分・効能と、東洋医学にもとづく使い方を学ぶ。", "S": "西洋薬が体に合わない人や、原因のはっきりしない不調に悩む患者さんに別の選択肢を示す。", "C": "漢方薬局の薬剤師・製薬会社の漢方部門・健康食品メーカーの開発職・研究者"}], "nutrition": [{"id": "nutrition_1", "name": "管理栄養", "desc": "病院や学校、施設で出される食事を、栄養のバランスを考えて設計する勉強をする。糖尿病の人や成長期の子どもなど、人の体の状態に合わせて「何をどれだけ食べるとよいか」を計算する。同じ食物系でも、料理そのものより『人の健康と数字(栄養価)』に向き合うのが、調理系との違い。", "L": "病気や年齢に合わせた献立の作り方と、栄養が体に与える影響。", "S": "糖尿病や高血圧の患者さんが、薬だけでなく毎日の食事で症状を悪化させずに過ごせるよう支える。", "C": "管理栄養士・病院栄養士・学校栄養職員・保健所職員・食品メーカーの栄養開発"}, {"id": "nutrition_2", "name": "食品科学", "desc": "食べ物がなぜ腐るのか、どうすれば安全に長く保存できるのかを、実験で確かめる勉強をする。微生物や成分を顕微鏡や機械で調べ、新しい食品やその安全な作り方を考える。栄養系が『食べる人の体』を見るのに対し、こちらは『食品そのものの仕組み』を理科の目で見る。", "L": "食品の成分・保存・加工・安全検査のしくみを実験を通して学ぶ。", "S": "スーパーやコンビニの食品が、食中毒を起こさず安心して買えるよう品質を守る。", "C": "食品メーカー研究開発・品質管理担当・食品衛生監視員・商品開発・農産加工技術者"}, {"id": "nutrition_3", "name": "フードビジネス", "desc": "レストランやカフェ、食品の店をどう経営すれば続けられるかを学ぶ。メニューの値段の決め方や、お客さんに選ばれる売り方、食材の仕入れまで、食を『仕事として回す』視点を身につける。栄養や実験ではなく、お金やお客さんの動きを扱うのが他との違い。", "L": "飲食店や食品店の経営・メニュー開発・販売のしくみ。", "S": "地方の飲食店や小さな食品店が、赤字を出さず長く商売を続けられるよう手助けする。", "C": "飲食店経営・フードコーディネーター・食品商社営業・店舗開発・メニュー企画"}, {"id": "nutrition_4", "name": "調理・製菓", "desc": "包丁の使い方からお菓子やパンの作り方まで、自分の手で実際に作る技術を身につける勉強をする。火加減や材料の配合を体で覚え、お客さんに出せる味と見た目を目指す。栄養の計算や経営ではなく、『作る腕そのもの』を磨くのがこの学科の中心。", "L": "和洋中の調理技術や、お菓子・パンを作る実技。", "S": "結婚式やお祝いの席で、その日を特別にする料理やケーキを形にして提供する。", "C": "調理師・パティシエ・パン職人・料理人・ホテルや式場の厨房スタッフ"}], "dental_hygiene": [{"id": "dental_hygiene_1", "name": "歯科衛生", "desc": "歯みがき指導や歯のクリーニング、虫歯・歯周病の予防を学ぶ。人とていねいに話しながら口の中をケアするのが好きな人に向いている。歯科技工が「歯の人工物を作る」のに対し、こちらは「人の口に直接ふれて予防と手入れをする」のが中心。", "L": "歯石除去や予防処置、歯科医師の診療補助、患者への口腔ケア指導の技術を学べる。", "S": "虫歯や歯周病で歯を失う高齢者や、忙しくて歯医者に通えない人が、病気になる前に口の健康を保てるよう支える。", "C": "歯科衛生士・歯科医院スタッフ・病院口腔ケア担当・介護施設の口腔ケア職・行政の歯科保健職"}, {"id": "dental_hygiene_2", "name": "歯科技工", "desc": "入れ歯・差し歯・歯の被せ物などを作る技術を学ぶ。細かい手作業やものづくりが好きで、集中して形を整えるのが得意な人に向いている。歯科衛生が患者と直接向き合うのに対し、こちらは工房で人工の歯を精密に作る仕事が中心。", "L": "歯の型取りから入れ歯や被せ物を作る材料・加工・色合わせの技術を学べる。", "S": "歯を失った人や歯が欠けた人が、自分の歯に近い見た目と噛み心地で、また食事や会話を楽しめるようにする。", "C": "歯科技工士・歯科技工所スタッフ・義歯メーカー技術職・歯科材料メーカー・CAD/CAM技工オペレーター"}, {"id": "dental_hygiene_3", "name": "口腔保健", "desc": "個人ではなく、学校や地域・職場など集団の口の健康をどう守るかを学ぶ。データを見たり、みんなに伝わる仕組みを考えたりするのが好きな人に向いている。歯科衛生が一人ひとりをケアするのに対し、こちらは大勢の人の予防や啓発の計画づくりが中心。", "L": "口の健康に関する統計や疫学、保健指導の計画づくり、健康教育の進め方を学べる。", "S": "子どもの虫歯が多い地域や、検診が行き届かない職場の人たちが、地域ぐるみの取り組みで歯を守れるようにする。", "C": "行政の歯科保健担当・保健所職員・学校歯科保健スタッフ・健康教育の企画職・歯科系研究職"}, {"id": "dental_hygiene_4", "name": "口腔保健（嚥下・摂食支援）", "desc": "歯だけでなく「飲み込む・噛む・食べる」力をどう保つかを学ぶ。高齢者や体の不自由な人に寄り添い、食事の場面を支えたい人に向いている。一般の歯科衛生が予防中心なのに対し、こちらは食べる機能の回復やリハビリの視点が中心。", "L": "飲み込みや噛む力の評価、誤えん予防、食事のリハビリ支援の方法を学べる。", "S": "うまく飲み込めず食事でむせたり肺炎になりやすい高齢者や病気のある人が、安全に口から食べ続けられるようにする。", "C": "歯科衛生士（摂食嚥下分野）・病院の口腔ケア職・介護施設の機能訓練担当・在宅訪問口腔ケア職・摂食支援チームスタッフ"}], "education_general": [{"id": "education_general_1", "name": "教育学", "desc": "授業のやり方やテストの作り方、学校という仕組みそのものを研究する。子どもがつまずく場面を観察して「どう教えれば伝わるか」を考えたい人に向く。隣の心理系が心の中を扱うのに対し、ここは教える方法や制度を中心に学ぶ。", "L": "授業の設計法や学習の理論、学校制度の成り立ちを学ぶ。", "S": "勉強についていけない子に合った教え方が分からず困っている先生の悩みを、根拠ある指導法で支える。", "C": "小・中・高の教員・教育委員会職員・塾や予備校の講師・教材会社の編集者・大学院での研究者"}, {"id": "education_general_2", "name": "教育心理", "desc": "子どもがなぜやる気を出すのか、どう記憶するのかを心の働きから調べる。友だち関係や不安で勉強が手につかない場面に関心がある人に向く。隣の教育学が教え方の工夫なら、こちらは学ぶ人の頭と心の仕組みそのものを扱う。", "L": "やる気や記憶、発達の仕組みと、それを測る心理テストの方法を学ぶ。", "S": "不登校やいじめで学校に来づらくなった子どもに、原因を見立てて関わるスクールカウンセラーの支えになる。", "C": "スクールカウンセラー・公認心理師や臨床心理士・児童相談所職員・教員・人材育成の担当者"}, {"id": "education_general_3", "name": "特別支援教育", "desc": "発達や体に特性のある子が、その子に合ったやり方で学べるよう支える方法を学ぶ。一人ひとりちがうペースに寄り添う関わりに関心がある人に向く。隣の教育心理が心の仕組みの研究なら、こちらは現場で具体的にどう手助けするかを学ぶ。", "L": "障害の特性に応じた指導法や、福祉・医療と連携した支援の進め方を学ぶ。", "S": "通常の授業では困りごとが大きい子どもと、その家族が安心して通える学びの場づくりを担う。", "C": "特別支援学校の教員・通常学校の支援担当教員・放課後等デイサービス職員・福祉施設の支援員"}, {"id": "education_general_4", "name": "幼児教育", "desc": "小学校に上がる前の子どもが、遊びの中でことばや人との関わりを身につける過程を学ぶ。小さな子と接するのが好きで、その時期の大切さに関心がある人に向く。隣の特別支援が個別の手助けなら、こちらは乳幼児という時期そのものの育ちを中心に扱う。", "L": "乳幼児の発達段階と、遊びを通した保育の計画づくりを学ぶ。", "S": "共働きで子どもを預けたい家庭に、安全で育ちを支える保育の場を提供する人材を育てる。", "C": "幼稚園教諭・保育士・認定こども園の職員・子育て支援センターのスタッフ・児童福祉施設の職員"}], "education_lang": [{"id": "education_lang_1", "name": "日本文学", "desc": "日本語で書かれた小説・詩・古典を読み込み、なぜその言葉が選ばれたか、どう人を動かすかを考えます。本を読んで「ここが好き」を言葉で説明したい人に向いています。同じ教育系でも、英語・英文が外国語を扱うのに対し、こちらは日本語そのものの表現を深掘りします。", "L": "古典から現代までの日本語作品の読み方と、言葉で気持ちを正確に伝える書き方を学べる。", "S": "「読書感想文や報告書が書けない」「自分の考えをうまく文章にできない」という生徒や働く人の困りごとを、読む・書く力で支える。", "C": "国語教員・編集者・ライター/記者・図書館司書・出版社員"}, {"id": "education_lang_2", "name": "英語・英文", "desc": "英語を使って外国の人と話したり、英語の本やニュースを読んだりする力を身につけます。海外の人と関わりたい、英語で情報を集めたい人に向いています。日本文学が日本語の表現を扱うのに対し、こちらは英語という別の言語の仕組みと、その背景にある文化を学びます。", "L": "英語の読み書き・会話の力と、英語圏の文化や考え方の違いを学べる。", "S": "「外国人観光客や海外取引先と話が通じない」「英語の資料が読めず仕事が進まない」という現場の困りごとを橋渡しで解決する。", "C": "英語教員・通訳/翻訳者・客室乗務員・商社/貿易事務・観光業スタッフ"}, {"id": "education_lang_3", "name": "言語・コミュニケーション", "desc": "人はなぜ同じ言葉でも誤解したり傷ついたりするのか、言い方や場面によって意味がどう変わるかを調べます。話し方や伝え方の「すれ違い」が気になる人に向いています。日本文学や英語が特定の言語の中身を学ぶのに対し、こちらは言語そのものの仕組みと、人と人の間で意味が伝わる仕組みを横断的に扱います。", "L": "言葉の意味の仕組みと、相手や場面に合わせて伝え方を選ぶ考え方を学べる。", "S": "「説明しても相手に伝わらない」「言い方のせいでもめてしまう」という職場や接客の困りごとを、伝え方の設計で減らす。", "C": "日本語教師・広報/PR担当・カウンセラー補助・言語聴覚士・ことばに関わる研究者"}, {"id": "education_lang_4", "name": "教育・教員養成", "desc": "教科の知識だけでなく、それを子どもにどう教えれば分かってもらえるかを学び、実際に学校で実習もします。誰かに教えるのが好き、人の成長に関わりたい人に向いています。他の3つが言葉や文学の中身を深める学科なのに対し、こちらは「学んだことを人に伝え、育てる方法」そのものを専門にします。", "L": "教科の教え方と、子どもの発達に合わせた授業や学級づくりの方法を学べる。", "S": "「勉強につまずく子をどう支えるか」「分かる授業をどうつくるか」という学校現場の困りごとに、指導の技術で応える。", "C": "小中高の教員・塾講師・教育委員会職員・特別支援教育スタッフ・教材会社社員"}], "childcare": [{"id": "childcare_1", "name": "保育", "desc": "0歳から就学前の子どもの遊び・生活・成長をどう支えるかを学ぶ。子どもと体を動かして関わるのが好きな人、その日の機嫌や体調に気づける人に向く。となりの「幼児教育」が学びや指導の中身を考えるのに対し、保育は食事・睡眠・着替えなど生活そのものに寄り添う点が違う。", "L": "乳幼児の発達段階に合わせた遊び・生活援助・安全の守り方を学べる。", "S": "共働きで日中子どもを見られない家庭の、安心して預けられる場所が足りないという困りごとを解決する。", "C": "保育士・保育園長・児童発達支援員・ベビーシッター・子育て支援センター職員"}, {"id": "childcare_2", "name": "幼児教育", "desc": "幼稚園や認定こども園で、遊びを通して文字・数・自然への興味をどう育てるかを学ぶ。子どもに何かを教えたり一緒に発見する場面が好きな人に向く。生活全般に寄り添う「保育」と違い、こちらは学びや指導カリキュラムの組み立てに重きを置く。", "L": "幼児期にふさわしい教育内容と、遊びから学びにつなげる指導法を学べる。", "S": "小学校入学後につまずく子を減らしたい保護者や先生の、幼児期にどう力を伸ばせばよいか分からないという困りごとを解決する。", "C": "幼稚園教諭・認定こども園教諭・幼児教室講師・教育玩具の企画開発・幼児向け教材編集"}, {"id": "childcare_3", "name": "子ども家庭福祉", "desc": "虐待・貧困・障害など、家庭が抱える困りごとに行政や施設としてどう関わるかを学ぶ。困っている人の話を聞き、制度につなぐ役割に関心がある人に向く。子ども自身と直接遊ぶ「保育」や「幼児教育」と違い、家庭全体や社会の仕組みを支える側に立つ。", "L": "児童福祉の制度・相談支援・家庭への伴走の方法を学べる。", "S": "頼れる人がなく孤立した親子の、どこに相談すればよいか分からず助けを求められないという困りごとを解決する。", "C": "児童福祉司・児童指導員・スクールソーシャルワーカー・児童養護施設職員・自治体の子ども家庭課職員"}, {"id": "childcare_4", "name": "発達支援", "desc": "ことばや対人関係の発達がゆっくりな子に、その子のペースに合った関わり方をどう設計するかを学ぶ。一人ひとりの違いをじっくり観察するのが得意な人に向く。集団の中で育ちを支える「保育」「幼児教育」と違い、個別の特性に合わせた支援に焦点を当てる。", "L": "発達の特性の理解と、遊びや訓練を通した個別支援の方法を学べる。", "S": "周りの子と同じようにできず不安な保護者の、わが子に合った育て方が分からないという困りごとを解決する。", "C": "児童発達支援管理責任者・言語聴覚士・放課後等デイサービス職員・特別支援学校教諭・療育支援員"}], "special_edu": [{"id": "special_edu_1", "name": "特別支援教育", "desc": "障害や発達の特性がある子が、その子に合ったやり方で学べるよう支える方法を学ぶ。「この子は耳から聞くより目で見た方がわかる」といった一人ひとりの違いを見つけて授業や教材を工夫したい人に向いている。臨床心理が心のケアを担うのに対し、ここは教室での日々の指導と学びの設計が中心。", "L": "障害種別ごとの特性の理解と、個別の指導計画や教材づくりの方法。", "S": "通常の進め方では授業についていけず取り残されてしまう子どもが、自分に合った方法で学べるようになる。", "C": "特別支援学校教員・特別支援学級担任・通級指導担当・教育委員会職員"}, {"id": "special_edu_2", "name": "言語聴覚", "desc": "ことばがうまく出ない、発音がはっきりしない、耳が聞こえにくいといった困りごとを検査して改善を手伝う方法を学ぶ。人と話す手助けに関心がある人に向いている。特別支援教育が学校の学び全体を支えるのに対し、ここは「聞く・話す・飲み込む」という機能そのものを専門に扱う。", "L": "言語・聴覚・嚥下の仕組みと、検査やリハビリ訓練の技術。", "S": "ことばや聞こえの障害で会話や食事に困っている子どもや高齢者が、コミュニケーションや食べる力を取り戻せる。", "C": "言語聴覚士・病院リハビリ職・児童発達支援施設職員・補聴器メーカー社員"}, {"id": "special_edu_3", "name": "作業療法", "desc": "服のボタンを留める、はさみを使う、字を書くといった日常の動作が難しい人に、道具や練習を工夫して「自分でできる」を増やす方法を学ぶ。手や体の動きと生活の工夫に興味がある人に向いている。言語聴覚がことばを扱うのに対し、ここは生活動作や手先の作業を専門にする。", "L": "体や手の動きの仕組みと、生活動作を支える訓練・道具の工夫。", "S": "けがや障害で着替えや食事などの日常動作ができず困っている人が、自分の力で生活できるようになる。", "C": "作業療法士・リハビリ病院職員・発達支援施設職員・福祉用具相談員"}, {"id": "special_edu_4", "name": "社会福祉", "desc": "障害のある子やその家族が使える制度やサービスをつなぎ、生活全体を支える仕組みを学ぶ。困っている人の相談に乗り、必要な支援に橋渡しする役割に関心がある人に向いている。作業療法や言語聴覚が体や機能を直接支えるのに対し、ここは制度や人をつなぐ調整役を担う。", "L": "福祉の制度や法律と、相談援助・関係機関との連携の方法。", "S": "どんな支援を受けられるか分からず孤立している障害児の家族が、必要なサービスにつながって生活を立て直せる。", "C": "社会福祉士・スクールソーシャルワーカー・相談支援専門員・福祉施設職員・行政の福祉担当"}], "home_econ": [{"id": "home_econ_1", "name": "食物・栄養", "desc": "食べ物の栄養や体への働きを学び、献立や調理を科学的に考える。料理が好きで、健康や食事の中身に関心がある人に向く。同じ家政でも『被服』が衣服を扱うのに対し、ここは『食』だけをとことん深める。", "L": "栄養の働きと食品の安全、献立づくりや調理の科学を学べる。", "S": "病院に入院した人や生活習慣病の人が、体に合った食事をとれずに困っている問題を、栄養指導や献立設計で解決する。", "C": "管理栄養士・栄養士・食品メーカー開発・学校給食職員・調理師"}, {"id": "home_econ_2", "name": "被服・服飾", "desc": "布や繊維の性質、服のデザインや縫製を学び、着る人に合った衣服を考える。手を動かしてものを作ることや、ファッションが好きな人に向く。『食物・栄養』が食を扱うのに対し、ここは衣服づくりそのものを技術として学ぶ。", "L": "繊維の性質、衣服のデザイン・型紙・縫製の技術を学べる。", "S": "体が不自由な高齢者が、自分では着替えにくい服に困っている問題を、着脱しやすい衣服の設計で解決する。", "C": "アパレル企画・パタンナー・テキスタイルデザイナー・縫製技術者・販売員"}, {"id": "home_econ_3", "name": "住居・インテリア", "desc": "住まいの間取りや家具、部屋の使いやすさや心地よさを学ぶ。空間を整えることや図面を描くことが好きな人に向く。『被服』が身につける物を扱うのに対し、ここは人が暮らす空間そのものを設計する。", "L": "住空間の設計、インテリアコーディネート、住みやすさの工夫を学べる。", "S": "車いすの人が段差や狭い通路で生活しづらい問題を、バリアフリーの間取りや家具配置で解決する。", "C": "インテリアコーディネーター・住宅メーカー設計補助・空間デザイナー・家具メーカー職員・建築関連職"}, {"id": "home_econ_4", "name": "児童・家族", "desc": "子どもの育ちや家族の暮らし、保育や子育て支援について学ぶ。子どもと関わることや、人の生活を支えることに関心がある人に向く。衣食住の『物』を扱う他の学科に対し、ここは人と人との関係や家庭生活そのものを学ぶ。", "L": "子どもの発達、保育の方法、家族の暮らしを支える知識を学べる。", "S": "共働きで子どもを預ける場所がなく困る家庭の問題を、保育や子育て支援の専門知識で解決する。", "C": "保育士・幼稚園教諭・児童福祉施設職員・子育て支援員・家庭科教員"}], "culinary": [{"id": "culinary_1", "name": "調理", "desc": "包丁の使い方や火加減、味のバランスを実際に手を動かして学び、和洋中それぞれの料理を作れるようになる。料理を作る作業そのものが好きで、人に食べてもらって喜ばれるのが嬉しい人に向いている。同じ食を扱う製菓がお菓子・パンに絞るのに対し、こちらは毎日の食事やお店の一品料理が中心になる。", "L": "和食・洋食・中華の調理技術と食材の扱い、衛生管理を学ぶ。", "S": "外食したい人やお店に来るお客さんが、安全でおいしい一皿を食べられないという困りごとを解決する。", "C": "調理師・料理人(和洋中)・ホテルや旅館の厨房スタッフ・飲食店の独立開業・給食調理員"}, {"id": "culinary_2", "name": "製菓・製パン", "desc": "ケーキやクッキー、パンを作るための生地の配合や発酵、デコレーションの技術を学ぶ。グラム単位の正確さや見た目の美しさにこだわるのが楽しい人に向いている。同じ食でも調理が食事の料理を扱うのに対し、こちらはお菓子とパンという甘い・焼く分野に特化する。", "L": "洋菓子・和菓子・パンのレシピと製造技術、飾りつけの技を学ぶ。", "S": "誕生日やお祝いの日に喜ばれるお菓子や、毎朝食べたいパンが身近で買えないという困りごとを解決する。", "C": "パティシエ・パン職人(ブーランジェ)・和菓子職人・洋菓子店やパン屋の開業・製菓メーカー社員"}, {"id": "culinary_3", "name": "栄養・栄養指導", "desc": "食べ物に含まれる栄養と体への働きを学び、年齢や体調に合った献立を考える力を身につける。料理だけでなく「何をどれだけ食べると健康にいいか」を数字や知識で考えるのが好きな人に向いている。手で作る調理や製菓と違い、こちらは健康や体づくりのための食の設計が中心になる。", "L": "栄養素の働きと、目的に合わせた献立づくり・食事指導の方法を学ぶ。", "S": "病気の人や育ち盛りの子ども、お年寄りが、体に合った食事を用意してもらえないという困りごとを解決する。", "C": "栄養士・管理栄養士・病院や学校の給食管理・スポーツ栄養士・食品メーカーの商品開発"}, {"id": "culinary_4", "name": "フードサービス・外食経営", "desc": "お店のメニューづくりや仕入れ、接客、お金の管理まで、飲食店を運営する仕組みを学ぶ。料理そのものより、お店全体をどう回して人に来てもらうかを考えるのが好きな人に向いている。調理や製菓が作る技術を磨くのに対し、こちらは作ったものをお客さんに届け、お店を続けていく経営の側を扱う。", "L": "メニュー企画・仕入れ・接客サービス・店舗運営とお金の管理を学ぶ。", "S": "おいしい料理があってもお店がうまく回らず続けられない、というお店の人の困りごとを解決する。", "C": "飲食店の店長・店舗開発やエリアマネージャー・カフェやレストランの開業・フードコーディネーター・外食チェーン社員"}], "fashion": [{"id": "fashion_1", "name": "服飾デザイン", "desc": "服の形・色・素材を考えて、デザイン画から立体の服に仕上げる方法を学ぶ。絵を描いたり手を動かしてものを作るのが好きな人に向く。となりの服飾造形が縫製や型紙づくりの技術中心なのに対し、ここは「どんな服にするか」というアイデアを考えるところが中心。", "L": "デザイン画の描き方、配色、素材選び、コレクション作品の制作。", "S": "自分に似合う服がわからない人や、体型に合う服が少ない人に、選びやすく着やすい服の形を提案できる。", "C": "ファッションデザイナー・アパレル企画・パタンナー・スタイリスト・テキスタイルデザイナー"}, {"id": "fashion_2", "name": "服飾造形", "desc": "型紙を引き、布を裁ち、ミシンで縫って一着を実際に仕立てる技術を学ぶ。細かい手作業を正確に続けるのが得意な人に向く。デザインのアイデアを考える服飾デザインと違い、ここは「どう作るか」という縫製・縫い方の技を磨くところ。", "L": "型紙作成、裁断、縫製、立体裁断による服の仕立て方。", "S": "既製品が体に合わない高齢者や障がいのある人に、その人の体に合わせた服を仕立てて着る負担を減らせる。", "C": "パタンナー・縫製技術者・オーダーメイド職人・衣装製作・補正担当"}, {"id": "fashion_3", "name": "ファッションビジネス", "desc": "服をどう売るか、お店や流行をどう動かすかを学ぶ。人と話したり数字で計画を立てるのが好きな人に向く。服そのものを作る学科と違い、ここは商品の仕入れ・販売・宣伝といった「服を届ける側」の仕事を扱う。", "L": "マーチャンダイジング、店舗運営、ブランド企画、販売とマーケティング。", "S": "小さなアパレル店が売れ残りで困る問題に、何をどれだけ仕入れて売るかの計画で在庫の無駄を減らせる。", "C": "バイヤー・販売員/店長・MD(商品企画)・アパレル広報・ブランドプロデューサー"}, {"id": "fashion_4", "name": "被服科学", "desc": "布や繊維の性質を、温度・洗濯・肌ざわりなど科学の目で調べることを学ぶ。理科の実験や数値で確かめるのが好きな人に向く。デザインや販売と違い、ここは「素材がどう働くか」を測って確かめる研究寄りの分野。", "L": "繊維の構造、染色、機能性素材、洗濯や着心地の科学的分析。", "S": "汗で蒸れる作業着や乾きにくい衣類に困る現場の人に、通気性や速乾性を高めた素材を開発できる。", "C": "繊維メーカー研究員・素材開発・品質管理・衣料品検査員・テキスタイルプランナー"}], "design": [{"id": "design_1", "name": "グラフィック・ビジュアルデザイン", "desc": "ポスターやロゴ、本や商品のパッケージなど、平らな面に文字や絵を配置して情報を伝える方法を学ぶ。色や形を整理して「ぱっと見て分かる」を作るのが好きな人に向く。となりのプロダクトデザインが手に取る「モノの形」を扱うのに対し、こちらは紙や画面の上の「見た目と伝え方」を扱う。", "L": "文字・色・写真・図を組み合わせて情報を分かりやすく整えるレイアウトや配色の技術を学べる。", "S": "店のチラシやお知らせが文字だらけで読まれない、というお店や役所の困りごとを、見て分かるデザインで解決する。", "C": "グラフィックデザイナー・広告制作者・編集デザイナー・パッケージデザイナー・ブランドデザイナー"}, {"id": "design_2", "name": "プロダクト・工業デザイン", "desc": "椅子や家電、文房具など、実際に手で使うモノの形と使い心地を設計する方法を学ぶ。「これ使いにくいな」を見つけて作り直すのが好きな人に向く。となりのグラフィックが画面や紙の見た目を扱うのに対し、こちらは立体のモノそのものの形と機能を扱う。", "L": "人が握りやすく壊れにくい立体物の形を、使う場面や材料・作り方まで考えて設計する技術を学べる。", "S": "高齢者がフタを開けにくい容器や、子どもが握りにくい道具など、特定の人が日常で感じる使いにくさを形で解決する。", "C": "プロダクトデザイナー・工業デザイナー・家電メーカー開発職・家具デザイナー・雑貨企画"}, {"id": "design_3", "name": "情報・UXデザイン", "desc": "アプリやウェブサイトの画面で、迷わず操作できる流れや配置を設計する方法を学ぶ。「どこを押せばいいか分からない」をなくすのが好きな人に向く。となりのグラフィックが見た目の美しさを扱うのに対し、こちらは押す順番や画面の動きなど「操作の流れ」を扱う。", "L": "アプリや画面を使う人の動きを観察し、迷わず使える操作の順番や画面の配置を設計する技術を学べる。", "S": "予約サイトが複雑で途中であきらめてしまう人の困りごとを、分かりやすい画面の流れで解決する。", "C": "UI/UXデザイナー・Webデザイナー・情報設計者・アプリ企画・サービスデザイナー"}, {"id": "design_4", "name": "空間・環境デザイン", "desc": "お店や展示会場、公園など、人が中に入って過ごす空間の作りや動線を設計する方法を学ぶ。「この場所いると落ち着く」を作るのが好きな人に向く。となりのプロダクトが手に持つモノを扱うのに対し、こちらは人がその中で動き回る場所全体を扱う。", "L": "人が入る空間の広さ・明るさ・歩く道筋を考え、過ごしやすく目的に合った場づくりを設計する技術を学べる。", "S": "通路が分かりにくく目的の売り場にたどり着けないお店の客の困りごとを、空間の配置と案内で解決する。", "C": "空間デザイナー・店舗設計者・ディスプレイデザイナー・展示企画・イベント空間設計"}], "fine_art": [{"id": "fine_art_1", "name": "絵画・日本画／油画", "desc": "キャンバスや紙に、絵の具・墨・岩絵具などを使って一枚の作品を描く技術と表現を学ぶ。手で描いて色や形をじっくり練りたい人に向いている。彫刻が立体を、デザインが「人に伝える役割」を持つのに対し、絵画は平面の一枚に自分の見方をこめるのが中心。", "L": "描く技法と、自分が見た世界を平面に表す表現力。", "S": "美術館や個人が「壁に飾る一点物の作品が欲しい」というとき、技術を持つ描き手がいなければ応えられない困りごとを解決する。", "C": "画家・美術教師・イラストレーター・修復技術者・画材メーカー社員"}, {"id": "fine_art_2", "name": "彫刻・立体造形", "desc": "木・石・金属・粘土などを削ったり組んだりして、ぐるりと回って見られる立体の作品を作る。手を動かして形そのものを作りたい人に向いている。平面に描く絵画と違い、重さや空間、見る角度による変化まで含めて表現するのが特徴。", "L": "素材を加工して空間の中に形を立ち上げる技術。", "S": "公園や駅前に置くモニュメントや像を「街の景色に合わせて作ってほしい」という自治体や施設の困りごとに応えられる。", "C": "彫刻家・舞台美術スタッフ・立体造形士（フィギュア原型等）・美術教師・店舗ディスプレイ製作"}, {"id": "fine_art_3", "name": "デザイン", "desc": "ポスターや商品パッケージ、ロゴ、Webなど、誰かに情報や気持ちを伝えるための見た目を作る。絵を描くこと自体より「人に正しく伝わるか」を考えたい人に向いている。自分の表現を出す絵画・彫刻と違い、依頼主の目的に合わせて作るのが大きな違い。", "L": "色や文字、レイアウトで情報をわかりやすく伝える方法。", "S": "お店や会社が「商品の魅力がチラシやパッケージで伝わらず売れない」という困りごとを、見た目を整えて解決する。", "C": "グラフィックデザイナー・Webデザイナー・パッケージデザイナー・広告制作・UIデザイナー"}, {"id": "fine_art_4", "name": "メディア芸術・映像", "desc": "動画・アニメーション・写真・CGなど、時間とともに動いたり変わったりする作品を作る。画面の中で物語や雰囲気を動かして見せたい人に向いている。一枚で完結する絵画やデザインと違い、流れ・音・編集まで組み合わせて表現するのが特徴。", "L": "映像や音、動きを組み合わせて作品を構成する技術。", "S": "企業やお店が「文章や写真だけでは商品やサービスの使い方が伝わらない」というとき、動画で分かりやすく見せて解決する。", "C": "映像クリエイター・アニメーター・写真家・CGデザイナー・動画編集者"}], "music": [{"id": "music_1", "name": "演奏", "desc": "ピアノやバイオリン、声楽など、自分の楽器を磨いて人前で演奏する力を学ぶ。毎日の練習が好きで、本番のステージで力を出すのが向いている人に合う。曲を新しく書く作曲よりも、すでにある曲を自分の音で表現することに重きを置く。", "L": "楽器や歌の演奏技術と、本番で実力を出す表現の方法を学ぶ。", "S": "生演奏を聴く機会の少ない地方の人や高齢者施設の人に、その場でしか味わえない音楽体験を届けられる。", "C": "演奏家・オーケストラ団員・音楽教室講師・吹奏楽指導者"}, {"id": "music_2", "name": "作曲", "desc": "曲やメロディーを新しく作り出し、ゲームや映画、CMに合う音楽を生み出す力を学ぶ。頭の中で鳴った音を形にしたい、無音の場面に音を足したい人に向いている。出来た曲を弾く演奏とは逆で、まだ世の中にない曲をゼロから作る側にいる。", "L": "楽譜の書き方や和音の組み立て、映像に合わせて音楽を作る技術を学ぶ。", "S": "アニメやゲーム、地域のCMを作る人が、場面に合った音楽が見つからず困るとき、専用の曲を用意して解決できる。", "C": "作曲家・編曲家・ゲーム音楽クリエイター・サウンドデザイナー"}, {"id": "music_3", "name": "音楽療法", "desc": "音楽を使って、心や体に困りごとを抱えた人の気持ちをほぐし回復を支える方法を学ぶ。人と関わるのが好きで、音楽で誰かを元気にしたい人に向いている。上手に演奏することより、相手に合わせて音楽をどう使うかを考える点が演奏や作曲と違う。", "L": "音楽が心と体に与える働きと、それを介護や医療の現場で使う方法を学ぶ。", "S": "言葉でうまく気持ちを伝えられない認知症の高齢者や障害のある子どもが、音を通して感情を表し落ち着けるよう支えられる。", "C": "音楽療法士・福祉施設職員・特別支援教育の支援員・リハビリ補助"}, {"id": "music_4", "name": "音響", "desc": "コンサートや配信で音を録ったり、スピーカーで会場にきれいに届けたりする技術を学ぶ。機械をいじるのが好きで、舞台を裏方として支えたい人に向いている。自分が演奏するのではなく、演奏者の音を最良の状態で観客に届ける役割を担う。", "L": "音の録音やミキシング、会場で音を響かせる音響機材の使い方を学ぶ。", "S": "ライブや学校行事で音が割れたり聞こえなかったりして困る主催者に、観客全員に届くクリアな音を用意できる。", "C": "音響エンジニア・PAエンジニア・レコーディングスタッフ・舞台音響スタッフ"}], "agriculture": [{"id": "agriculture_1", "name": "農学・作物", "desc": "イネや野菜などの作物がよく育つしくみを、土・水・品種・栽培方法の面から学ぶ。畑や田んぼに立って、どうすれば収穫が増えるか試すのが好きな人に向く。同じ農学でも『食品』が収穫後の加工を扱うのに対し、こちらは育てる現場そのものを扱う。", "L": "土壌・肥料・品種改良・栽培技術など、作物を育てて収穫量や品質を高める方法を学ぶ。", "S": "天候不順や担い手不足に悩む農家が、少ない人手でも安定して収穫できるよう、栽培方法や強い品種で支える。", "C": "農業技術者・農業協同組合(JA)職員・種苗会社社員・農業法人スタッフ・公務員(農業職)"}, {"id": "agriculture_2", "name": "食品科学", "desc": "食べ物の成分や、保存・加工で味や安全がどう変わるかを実験で調べる。料理そのものより『なぜ腐るのか』『どうすれば長持ちするか』を理屈で知りたい人に向く。作物を育てる『農学・作物』と違い、収穫した後の食材を加工し製品にする側を扱う。", "L": "食品の成分・栄養・加工・保存・安全管理など、安心しておいしく食べられる仕組みを学ぶ。", "S": "食中毒や食品ロスを減らしたい食品メーカーや消費者のために、安全で長持ちする加工・保存の方法を作る。", "C": "食品メーカー研究開発・品質管理担当・商品開発者・食品衛生監視員・管理栄養士"}, {"id": "agriculture_3", "name": "獣医・畜産", "desc": "牛・豚・鶏などの家畜や、犬・猫などの動物の体・健康・育て方を学ぶ。動物が好きで、病気を治したり元気に育てたりする側に回りたい人に向く。植物を扱う他の学科と違い、生きた動物を相手にする点が大きく異なる。", "L": "動物の体のしくみ・病気・治療・飼育や繁殖の方法を学ぶ(獣医は6年制)。", "S": "ペットの病気で困る飼い主や、家畜の健康・伝染病を防ぎたい畜産農家を、診療と飼育の知識で支える。", "C": "獣医師・動物病院スタッフ・畜産技術者・家畜の飼料/製薬会社社員・公務員(家畜防疫)"}, {"id": "agriculture_4", "name": "環境・生態", "desc": "森や川、生き物どうしのつながりを観察し、自然を守りながら使う方法を学ぶ。外に出て生き物や自然を調べるのが好きな人に向く。作物や家畜を『増やす』他の学科と違い、自然全体のバランスを守る視点で考える。", "L": "森林・水・生き物のつながりや、自然を壊さず利用・保全する方法を学ぶ。", "S": "森林の荒廃や水質の悪化、生き物の減少に悩む地域や自治体のために、自然を守る計画や方法を提案する。", "C": "環境調査会社社員・林業/森林組合スタッフ・自然保護施設職員・公務員(環境/林務職)・環境コンサルタント"}], "environment": [{"id": "environment_1", "name": "環境科学", "desc": "大気・水・土・生き物のつながりを調べ、汚染や気候変動が起きる仕組みをデータで明らかにする。川の水質を測ったり森の二酸化炭素の量を調べたりと、フィールドに出て手を動かすのが好きな人に向いている。同じ環境系でも『環境政策』が制度やルールで人を動かすのに対し、こちらは現象そのものを観測して原因を突きとめる側。", "L": "生態系や大気・水・土壌のしくみと、汚染や気候変動を測定・分析する方法。", "S": "工場の近くに住む人が「この川の水は本当に安全なのか」と不安なとき、何がどれだけ含まれているかを調べて判断材料を出せる。", "C": "環境調査会社の技術者・自治体の環境職員・水道や下水の技術者・研究者・環境コンサルタント"}, {"id": "environment_2", "name": "農学", "desc": "米や野菜や家畜をどう育てれば、おいしく安全にたくさん作れるかを土・品種・栽培方法から考える。植物や動物を育てるのが好きで、食べ物の元をたどるのが面白い人に向いている。『食品科学』が収穫した後の加工や栄養を扱うのに対し、こちらは畑や農場で作物・家畜を育てる手前の段階を担う。", "L": "作物や家畜の育て方、品種改良、土づくりや農業のしくみ。", "S": "農家が「天候が荒れても安定して収穫したい」と悩むとき、丈夫な品種や育て方を工夫して収穫量を守れる。", "C": "種苗・農薬・肥料メーカー社員・JAや農業法人の職員・農業普及指導員・公務員（農業職）・研究者"}, {"id": "environment_3", "name": "食品科学", "desc": "食べ物が腐る理由や、栄養・味・安全をどう保つかを化学と生物の目で調べる。料理や食品づくりの「なぜ」を知りたい人、人の健康を食から支えたい人に向いている。『農学』が作物を育てるところまでを扱うのに対し、こちらは収穫された後の加工・保存・栄養という出口側を担当する。", "L": "食品の成分や栄養、加工・保存の技術、安全性を守るしくみ。", "S": "メーカーが「もっと日持ちして添加物の少ない商品を作りたい」と考えるとき、保存方法や成分の工夫で実現できる。", "C": "食品メーカーの開発・品質管理・栄養士や管理栄養士・保健所などの公務員・研究者・商品企画"}, {"id": "environment_4", "name": "森林・林業", "desc": "山の木や森を育て、木材や水源として活かしながら災害も防ぐ方法を学ぶ。山歩きや木が好きで、何十年単位の長い時間で自然を考えるのが向いている人に合う。『農学』が毎年収穫する畑を扱うのに対し、こちらは数十年かけて育つ森を相手にし、木材生産と土砂災害の防止を同時に考える点が違う。", "L": "森の育て方、木材の使い方、山が土砂崩れや洪水を防ぐしくみ。", "S": "大雨のたびに「裏山が崩れないか」と不安な集落の人に、森を整えて災害を防ぐ手立てを示せる。", "C": "林業会社や製材メーカー社員・自治体の林業職員・国有林を管理する公務員・造園や緑化の技術者・研究者"}], "veterinary": [{"id": "veterinary_1", "name": "獣医", "desc": "動物の体のしくみや病気を学び、診断や手術、治療のしかたを身につける。ペットや家畜、動物園の動物を実際に診て治したい人に向いている。同じ動物系でも、動物看護がスタッフとして治療を支えるのに対し、ここは自分で診断し手術まで担う立場を目指す。", "L": "動物の病気の診断・治療・手術と、その土台になる体のしくみを学ぶ。", "S": "飼い主が「うちの犬が急に動かなくなった」と困ったとき、原因を見つけて治療できる獣医がいない地域の不足を埋める。", "C": "獣医師・動物病院勤務医・家畜の診療獣医・公務員獣医(食肉検査)・製薬会社の研究職"}, {"id": "veterinary_2", "name": "動物看護", "desc": "動物病院で獣医を支え、入院動物の世話や検査の準備、飼い主への説明を担う技術を学ぶ。動物にもその家族にも寄りそって支えたい人に向いている。獣医が診断や手術をするのに対し、ここは日々のケアやコミュニケーションで治療全体を回す役割を学ぶ。", "L": "検査の補助・入院動物のケア・飼い主への対応など、動物医療を支える技術を学ぶ。", "S": "動物病院で獣医が手術に集中できず、入院中のペットの細かな世話まで手が回らない人手不足を解消する。", "C": "愛玩動物看護師・動物病院スタッフ・トリマー・ペット関連企業・動物保護施設職員"}, {"id": "veterinary_3", "name": "畜産・動物科学", "desc": "牛・豚・鶏などを健康に育て、肉・卵・牛乳を安定してつくる方法を学ぶ。食べ物を支える仕事や、動物の飼い方の改良に興味がある人に向いている。1頭ずつ病気を治す獣医と違い、ここは群れ全体や農場のしくみを良くする視点で学ぶ。", "L": "家畜の育て方・餌・繁殖や、安全な畜産物をつくるしくみを学ぶ。", "S": "畜産農家が「飼料代が高く、牛の体調管理も難しい」と悩む現場で、効率よく健康に育てる方法を提供する。", "C": "畜産農家・飼料メーカー・食品会社・農協職員・公務員(農政)"}, {"id": "veterinary_4", "name": "動物行動・野生動物", "desc": "動物がなぜその行動をとるのかを観察し、生態や自然の中での暮らしを学ぶ。野生動物や絶滅しそうな種を守ることに関心がある人に向いている。病気を治す獣医や農場を扱う畜産と違い、ここは自然や生態系の中で動物を見る視点で学ぶ。", "L": "動物の行動・生態・野生動物の保護や自然環境との関わりを学ぶ。", "S": "クマやシカが人里に出て農作物を荒らす被害に、人と動物が共存できる対策で地域住民を助ける。", "C": "動物園・水族館飼育員・野生動物の調査研究職・自然保護団体職員・環境系公務員・大学研究者"}], "sports": [{"id": "sports_1", "name": "スポーツ健康", "desc": "運動が体や心にどう良いか、どんな運動をどれくらいすれば健康になるかを科学で調べる。みんなが元気に長生きするための運動を考えたい人に向いている。トレーニング理論を深める運動科学とちがって、子どもからお年寄りまで一般の人の健康づくりが中心。", "L": "運動が健康に与える効果と、安全で続けられる運動プログラムの作り方を学ぶ。", "S": "運動不足で生活習慣病になりやすい中高年や、体を動かす機会の少ない子どもの健康を、無理のない運動で支える。", "C": "健康運動指導士・フィットネストレーナー・保健体育教員・自治体の健康づくり職員・スポーツクラブ運営"}, {"id": "sports_2", "name": "スポーツトレーニング", "desc": "選手が速く・強く・うまくなるために、体の仕組みや動きを数値で測って練習方法を組み立てる。アスリートの記録を伸ばす手伝いをしたい人に向いている。一般の人の健康が中心のスポーツ健康とちがって、競技で勝つための専門に絞っている。", "L": "筋肉や体力の測定方法と、競技力を高めるトレーニングの組み立て方を学ぶ。", "S": "記録が伸び悩む選手や、練習しすぎてケガを繰り返すアスリートの体づくりを、科学的なデータで支える。", "C": "ストレングスコーチ・スポーツトレーナー・競技団体スタッフ・部活動指導員・スポーツメーカー研究職"}, {"id": "sports_3", "name": "アスレティックトレーナー", "desc": "スポーツでケガをした人の手当てや、試合に戻るためのリハビリ、ケガを防ぐテーピングなどを学ぶ。選手の体を守り治す側で支えたい人に向いている。記録を伸ばすトレーニングとちがって、ケガの予防と回復が専門。", "L": "スポーツのケガの応急手当て・リハビリ・予防の方法を学ぶ。", "S": "試合中にケガをした選手や、痛みを抱えたまま競技を続ける人が、安全に体を治して復帰できるよう支える。", "C": "アスレティックトレーナー・理学療法士(進学後)・接骨院スタッフ・チーム帯同トレーナー・スポーツ施設スタッフ"}, {"id": "sports_4", "name": "スポーツマネジメント", "desc": "スポーツの大会運営やチーム経営、地域のスポーツイベントを企画して、お金や人をうまく動かす仕組みを学ぶ。スポーツを支える事業や経営の側で働きたい人に向いている。体を直接ケアする学科とちがって、スポーツを社会で広げる仕事が中心。", "L": "スポーツの大会・チーム・施設を経営し、観客やスポンサーを集める方法を学ぶ。", "S": "観客やお金が集まらず運営に困るスポーツチームや、利用者の少ない地域の体育施設に、人と資金を呼び込む。", "C": "プロスポーツ球団職員・スポーツイベント企画・スポーツ施設運営・スポーツ用品メーカー営業・地域スポーツクラブ運営"}], "health_edu": [{"id": "health_edu_1", "name": "体育・スポーツ科学", "desc": "運動が体にどう効くかを科学で学ぶ。走り方や筋肉の使い方、トレーニング方法をデータで調べる。体を動かすのが好きで、なぜ速くなるか・強くなるかを知りたい人に向く。となりの『健康スポーツ指導』が人を教えることに重きを置くのに対し、ここは現象そのものの仕組みを研究する。", "L": "運動と身体の関係を生理学やバイオメカニクスの視点で学べる。", "S": "フォームが分からず怪我を繰り返す部活生やスポーツ選手の、安全で効率的な体の使い方が分からない困りごとを解決する。", "C": "スポーツトレーナー・体育教員・スポーツメーカー研究職・スポーツチーム職員・大学院研究者"}, {"id": "health_edu_2", "name": "健康スポーツ指導", "desc": "幅広い年代の人が運動を続けられるよう、教え方や声かけを学ぶ。子どもの遊びから高齢者の体操まで対象が広い。人と関わりながら運動を広めたい人に向く。となりの『体育・スポーツ科学』が仕組みの研究中心なのに対し、ここは現場で人に運動を届ける実践を中心に学ぶ。", "L": "運動を続けてもらうための指導法やプログラムの作り方を学べる。", "S": "運動不足だが何から始めればいいか分からない地域の大人や高齢者の、無理なく続けられる運動が見つからない困りごとを解決する。", "C": "フィットネスインストラクター・健康運動指導士・スポーツクラブ職員・自治体の健康推進員・介護予防スタッフ"}, {"id": "health_edu_3", "name": "保健・養護", "desc": "学校や地域で人の健康と心を支える方法を学ぶ。けがの手当てだけでなく、悩みを抱える子の相談にも乗る。困っている人にそっと寄り添いたい人に向く。となりの『健康スポーツ指導』が運動を教えるのに対し、ここは健康全体や心のケアを見守る立場を学ぶ。", "L": "保健指導や応急処置、子どもの心身のケアの方法を学べる。", "S": "体調や悩みを誰に相談していいか分からない小中高生の、学校で安心して頼れる大人がいない困りごとを解決する。", "C": "養護教諭（保健室の先生）・保健師・学校保健スタッフ・自治体保健課職員・健康相談員"}, {"id": "health_edu_4", "name": "栄養・食健康", "desc": "食べ物と体の関係を学び、健康な食事を考える。栄養のバランスや、病気の人向けの献立も学ぶ。料理や食べることに関心があり、食で人を支えたい人に向く。となりの『保健・養護』が心身の見守り中心なのに対し、ここは食という具体的な手段で健康を支える点が違う。", "L": "栄養学にもとづいた食事づくりや献立の立て方を学べる。", "S": "持病や年齢で食事制限がある人や育ち盛りの子どもの、何をどれだけ食べればよいか分からない困りごとを解決する。", "C": "管理栄養士・栄養士・給食センター職員・食品メーカー開発・病院や福祉施設の栄養スタッフ"}], "beauty": [{"id": "beauty_1", "name": "美容", "desc": "カットやカラー、パーマで髪を整えたり、メイクで顔の印象を変えたりする技術を学ぶ。人と話しながら『どんな自分になりたいか』を引き出すのが好きな人に向いている。理容が顔そりやメンズ中心なのに対し、こちらは髪型全体やヘアアレンジ、メイクまで幅広く扱う。", "L": "カット・カラー・パーマ・メイクなど髪と顔を美しく整える技術。", "S": "就活の面接前で自分に似合う髪型がわからない人や、結婚式で特別な装いをしたい人の『なりたい姿』を形にする。", "C": "美容師・ヘアメイクアーティスト・ブライダルスタイリスト・美容室経営・化粧品メーカー販売"}, {"id": "beauty_2", "name": "理容", "desc": "ヘアカットに加えて、カミソリを使った顔そりやひげの手入れといった理容ならではの技術を学ぶ。手先が器用で、清潔感のある仕上がりを丁寧に作るのが好きな人に向いている。美容がメイクやヘアアレンジまで広げるのに対し、こちらは顔そりとメンズの身だしなみに専門性がある。", "L": "カットと、カミソリによる顔そり・ひげ整えなど理容ならではの技術。", "S": "電気シェーバーでは肌が荒れる人や、面接前に清潔感のある身だしなみを整えたい人の肌トラブルや見た目の悩みを解決する。", "C": "理容師・バーバー経営・ヘアサロンスタッフ・シェービング専門店スタッフ・福祉理美容師"}, {"id": "beauty_3", "name": "エステティック", "desc": "フェイシャルやボディのマッサージ、肌の手入れなど、肌そのものを整える技術を学ぶ。相手の体に触れながら、丁寧にケアして喜んでもらうことにやりがいを感じる人に向いている。美容や理容が髪を主に扱うのに対し、こちらは肌や体のコンディションを整えることに専門がある。", "L": "フェイシャルケア・ボディトリートメント・肌や体を整えるエステ技術。", "S": "肌の乾燥や疲れで悩む人、リラックスする時間がほしい人の、肌トラブルや心身の疲れをやわらげる。", "C": "エステティシャン・スパセラピスト・化粧品カウンセラー・エステサロン経営・美容クリニックスタッフ"}, {"id": "beauty_4", "name": "ネイル", "desc": "爪の手入れや形を整える技術、ジェルネイルやアートで指先を彩る技術を学ぶ。細かい作業が得意で、デザインを考えるのが好きな人に向いている。髪や肌を扱う他の学科と違い、爪と指先という限られた部分を集中して美しく仕上げる専門性がある。", "L": "爪のケアとジェル・ネイルアートで指先を美しく整える技術。", "S": "二枚爪や深爪で悩む人や、仕事で気分を上げたい人の、爪の悩みや手元の見た目を改善する。", "C": "ネイリスト・ネイルサロン経営・ネイル用品メーカースタッフ・ネイル講師・美容関連フリーランス"}], "bridal_hotel": [{"id": "bridal_hotel_1", "name": "ブライダル", "desc": "結婚式の進め方やドレス、装花、演出をどう組み立てるかを学びます。「この二人らしい一日にしたい」と細かい段取りや人の気持ちに気を配るのが好きな人に向いています。ホテル学科がホテル全体の運営を扱うのに対し、ここは結婚式という一回きりの式典づくりに絞って学びます。", "L": "新郎新婦の希望を聞き取り、式の進行や演出、衣装・装花を一つの形にまとめる技術を学べる。", "S": "一生に一度の式で何から決めればいいか分からず不安な新郎新婦の、段取りや費用の悩みを整理して支える。", "C": "ウェディングプランナー・ドレスコーディネーター・ブライダルヘアメイク・結婚式場スタッフ・装花スタッフ"}, {"id": "bridal_hotel_2", "name": "ホテル", "desc": "フロント、客室、レストラン、宴会といったホテル全体をどう動かすかを学びます。たくさんのお客様に同時に気持ちよく過ごしてもらう仕組みづくりが好きな人に向いています。ブライダルが一つの式に集中するのに対し、ここは毎日多くの人が泊まり食事する施設の運営を幅広く扱います。", "L": "フロント業務や客室・料飲サービス、宿泊施設の運営や接客の流れ全体を学べる。", "S": "旅行や出張で慣れない土地に泊まる客の、安心して快適に過ごしたいという要望に応える。", "C": "ホテルフロント・コンシェルジュ・宴会サービス・客室予約スタッフ・レストランサービス"}, {"id": "bridal_hotel_3", "name": "観光・ツーリズム", "desc": "旅行プランの作り方や、地域に人を呼び込む仕組みを学びます。地図を見て「ここをこう巡ると楽しい」と考えたり、町の魅力を伝えるのが好きな人に向いています。ホテルが泊まる場所の中を扱うのに対し、ここは町や地域全体をどう旅してもらうかを外側から考えます。", "L": "旅行商品の企画や、地域の魅力を観光資源として活かし人を呼ぶ方法を学べる。", "S": "観光客が減って元気をなくした地方の町の、人を呼び戻して経済を立て直したいという課題に取り組む。", "C": "旅行会社の企画・添乗員・観光協会職員・自治体の観光担当・テーマパークスタッフ"}, {"id": "bridal_hotel_4", "name": "フード・製菓", "desc": "料理やパン、ケーキを作る技術と、お店で出すための衛生や仕入れの知識を学びます。手を動かして食べ物を作り、人が喜ぶ顔を見るのが好きな人に向いています。ホテルや観光が施設や町を扱うのに対し、ここは「食べ物そのものを作る腕」を磨くことに集中します。", "L": "調理や製菓の実技と、食品衛生・食材の扱い方など食を仕事にする基礎を学べる。", "S": "記念日や日常に「おいしくて安全な一皿」を求める客の期待に、確かな技術で応える。", "C": "パティシエ・調理師・ブーランジェ（パン職人）・カフェスタッフ・ホテル料飲スタッフ"}], "auto_mech": [{"id": "auto_mech_1", "name": "自動車整備", "desc": "エンジンやブレーキ、電装系を分解・点検し、不具合の原因を見つけて直す技術を学ぶ。車を触るのが好きで、故障の原因を順番に切り分けて考えるのが得意な人に向いている。となりの自動車工学が「新しい車を設計する側」なのに対し、ここは「すでに走っている車を直して安全に保つ側」を担う。", "L": "実際の車両を使った点検・分解整備と、国家資格(自動車整備士)に必要な知識。", "S": "車検切れや整備不良の車で事故に遭わないよう、ドライバーや家族が安心して乗れる状態を保つ困りごとを解決する。", "C": "自動車整備士・ディーラー整備スタッフ・車検場検査員・整備工場経営・バス/トラック整備"}, {"id": "auto_mech_2", "name": "自動車工学", "desc": "エンジンの仕組みやサスペンション、車体の構造を理屈から学び、性能や安全性を高める設計を考える。「なぜこの形なのか」を数式や図面で突き詰めたい人に向いている。となりの自動車整備が「直す」のに対し、ここは「より良い車を作る・改良する」ことを目指す。", "L": "車の動く原理を物理や設計図面の面から理解する工学の基礎。", "S": "燃費が悪い、ぶつかったときに壊れやすいといったメーカーや利用者の不満を、設計の改良で減らす。", "C": "自動車メーカー設計者・部品開発エンジニア・実験/評価担当・テストドライバー・研究職"}, {"id": "auto_mech_3", "name": "電気自動車", "desc": "モーターやバッテリー、充電システムなど電気で走る車のしくみを学ぶ。電気やプログラムに興味があり、これからの新しい車に関わりたい人に向いている。となりの自動車整備がエンジン車の油や部品を中心に扱うのに対し、ここは高電圧バッテリーやソフトウェアという別の技術を扱う。", "L": "電気自動車やハイブリッド車の電気系統・電池・制御の知識。", "S": "排気ガスで空気が汚れる、ガソリン代が高いという地域住民やドライバーの困りごとに、電気で走る車の整備・普及で応える。", "C": "EV整備士・バッテリー開発技術者・充電設備の設置/保守・自動車メーカー電動化部門・電力会社技術職"}, {"id": "auto_mech_4", "name": "車体・板金塗装", "desc": "事故でへこんだ車体を元の形に戻し、色を塗り直して仕上げる技術を学ぶ。手先を使った細かい作業や、仕上がりの美しさにこだわるのが好きな人に向いている。となりの自動車整備が動く機構を直すのに対し、ここは外側のボディの形と見た目を直す部分を専門にする。", "L": "へこみの修復(板金)と色合わせ・塗装の技術。", "S": "事故でボディが傷ついた車を直したいオーナーや、見た目をきれいに保ちたい人の困りごとを解決する。", "C": "板金塗装工・自動車鈑金工場スタッフ・カスタムショップ職人・損害保険のアジャスター・中古車整備"}], "care_welfare": [{"id": "care_welfare_1", "name": "介護福祉", "desc": "体が不自由になった高齢者や障害のある人の、食事・入浴・着替えといった毎日の暮らしを直接そばで支える技術を学ぶ。一人ひとりの「できること」を見つけて引き出すのが好きな人に向いている。となりの社会福祉が「制度や相談で支える」のに対し、ここは実際に手や体を動かして介助する点が違う。", "L": "安全な体の動かし方や声かけなど、生活を直接支える介助の技術を学ぶ。", "S": "歩くのが難しくなった高齢者が、施設や自宅で安心して食事やトイレを続けられるよう支える。", "C": "介護福祉士・施設介護職員・訪問介護員・生活相談員・サービス提供責任者"}, {"id": "care_welfare_2", "name": "社会福祉", "desc": "お金や家族のことで困っている人の話を聞き、使える制度やサービスにつなぐ「相談の仕事」を学ぶ。人の悩みをじっくり聞いて整理するのが得意な人に向いている。となりの介護福祉が体を動かす介助なのに対し、ここは制度や手続きで暮らしを立て直す支援が中心。", "L": "福祉制度のしくみと、困った人を必要な支援につなぐ相談援助の方法を学ぶ。", "S": "生活費が足りない家庭や行政の手続きがわからない人が、適切な公的支援にたどり着けるよう橋渡しする。", "C": "社会福祉士・生活相談員・ケースワーカー・地域包括支援センター職員・行政の福祉職"}, {"id": "care_welfare_3", "name": "精神保健福祉", "desc": "こころの病気や生きづらさを抱える人が、社会の中で自分らしく暮らせるよう相談に乗り支える方法を学ぶ。目に見えない不安や孤立に寄り添える人に向いている。となりの社会福祉が生活全般の相談なのに対し、ここは精神面の回復と社会復帰に焦点を絞る点が違う。", "L": "こころの病を持つ人への相談援助と、社会復帰を支える地域連携の方法を学ぶ。", "S": "うつや統合失調症で働けず家にこもりがちな人が、再び仕事や地域とつながれるよう支える。", "C": "精神保健福祉士・医療機関の相談員・就労支援員・地域活動支援センター職員"}, {"id": "care_welfare_4", "name": "介護経営・福祉マネジメント", "desc": "介護施設や福祉サービスを、お金や人の面でうまく回す運営のしくみを学ぶ。現場の介助よりも、職員のシフトや施設の収支など全体を見るのが好きな人に向いている。となりの介護福祉が一人を直接介助するのに対し、ここは施設全体が長く続くよう支える裏方の役割。", "L": "介護報酬のしくみや人材管理など、福祉施設を健全に運営する経営の知識を学ぶ。", "S": "人手不足で職員が次々辞めてしまう介護施設が、働きやすい体制を整えサービスを続けられるようにする。", "C": "施設長・福祉施設の事務長・ケアマネジャー・福祉用具プランナー・介護事業の管理者"}], "med_admin": [{"id": "med_admin_1", "name": "医療事務・診療情報", "desc": "病院の受付やお金の計算、カルテの管理を学ぶ。人と話すのが好きで、細かい作業を正確にこなせる人に向いている。となりの「医療秘書」が先生個人を支えるのに対し、こちらは病院の窓口や事務全体を回す役割。", "L": "診療報酬の計算や、患者さんの受付・会計、カルテ管理の仕事を学べる。", "S": "医療費の計算が複雑でわかりにくい患者さんや、事務作業に追われる医師の負担を減らせる。", "C": "医療事務員・診療情報管理士・病院受付・調剤薬局事務・クラーク"}, {"id": "med_admin_2", "name": "医療秘書", "desc": "医師や看護師がスムーズに働けるよう、スケジュール調整や書類作成で支える仕事を学ぶ。気配りができて、人をサポートするのが得意な人に向いている。となりの「医療事務」が病院全体の窓口を担うのに対し、こちらは特定の医師や部署に付いて個人を支える。", "L": "医師のスケジュール管理や文書作成、来客対応などの秘書スキルを学べる。", "S": "診察や手術で忙しく、事務作業まで手が回らない医師の時間を生み出せる。", "C": "医療秘書・ドクターズクラーク・病棟クラーク・院長秘書・医局秘書"}, {"id": "med_admin_3", "name": "診療情報管理", "desc": "カルテや検査結果などの医療データを正しく記録・整理し、活用する方法を学ぶ。データを扱うのが好きで、地道にコツコツ取り組める人に向いている。となりの「医療事務」がお金や受付を扱うのに対し、こちらは病気の記録そのものを管理し、病院の質を高める。", "L": "病名のコード化やカルテの管理、医療統計の作り方を学べる。", "S": "過去の治療データが整理されず、研究や治療改善に活かせない病院の困りごとを解決できる。", "C": "診療情報管理士・がん登録実務者・医療情報技師・カルテ管理担当・病院統計担当"}, {"id": "med_admin_4", "name": "医療情報・医事コンピュータ", "desc": "電子カルテやレセプトコンピュータなど、病院のシステムを使いこなす技術を学ぶ。パソコンが好きで、新しい仕組みに興味がある人に向いている。となりの「診療情報管理」が記録の中身を扱うのに対し、こちらはそれを動かすシステムやIT側を担当する。", "L": "電子カルテやレセプト請求ソフトの操作と、医療システムの仕組みを学べる。", "S": "紙の管理で時間がかかったりミスが起きたりする病院の事務作業を、ITで速く正確にできる。", "C": "医療情報技師・医事コンピュータ担当・電子カルテ運用担当・医療IT営業・システム事務"}], "accounting": [{"id": "accounting_1", "name": "簿記・会計", "desc": "会社のお金の出入りを帳簿に記録し、決算書としてまとめる方法を学ぶ。数字を間違えずコツコツ積み上げる作業が苦にならない人に向いている。となりの「経営情報」がパソコンやシステムでお金を扱うのに対し、こちらは記録のルールそのものと正確さを身につける。", "L": "簿記の仕組みと決算書の作り方、税金の基礎を学べる。", "S": "小さなお店の店主が、いくら儲かったか分からず確定申告で困る、という悩みを正確な帳簿で解決する。", "C": "経理・会計事務所スタッフ・税理士・公認会計士・銀行員"}, {"id": "accounting_2", "name": "経営情報", "desc": "会社のお金や売上のデータを、表計算ソフトや会計システムを使って整理・分析する方法を学ぶ。パソコンが好きで、数字を見て「なぜこうなった」と考えるのが楽しい人に向いている。となりの「簿記・会計」が手で記録するルールを学ぶのに対し、こちらはITを使ってデータを役立てることに重きを置く。", "L": "会計ソフトや表計算を使ったデータ整理・分析を学べる。", "S": "中小企業の社長が、売上データはあるのにどの商品が利益を生んでいるか分からない、という困りごとを分析で見える化する。", "C": "経理事務・情報システム担当・データ入力オペレーター・販売管理担当"}, {"id": "accounting_3", "name": "ビジネス実務", "desc": "電話応対や書類作成、来客対応など、会社で実際に必要になる事務の仕事を練習しながら学ぶ。人と丁寧にやりとりし、段取りよく動くのが得意な人に向いている。となりの「簿記・会計」がお金の計算に集中するのに対し、こちらは会社全体を回す事務作業や接客のスキルを幅広く身につける。", "L": "ビジネスマナー・文書作成・接客などの事務実務を学べる。", "S": "新人を採用した会社が、敬語や書類の書き方を一から教える時間がなくて困る、という負担を即戦力人材で軽くする。", "C": "一般事務・営業事務・受付・秘書・販売スタッフ"}, {"id": "accounting_4", "name": "金融・ファイナンス", "desc": "お金を貸し借りしたり、株や保険で運用したりする金融の仕組みを学ぶ。ニュースの経済や世の中のお金の動きに興味がある人に向いている。となりの「簿記・会計」が一つの会社のお金を記録するのに対し、こちらは銀行や市場など、社会全体でお金が回る仕組みを扱う。", "L": "銀行・株式・保険などお金が動く仕組みを学べる。", "S": "将来のお金が不安な家庭が、貯金や保険をどう選べばいいか分からない、という悩みに相談相手として答える。", "C": "銀行員・証券会社社員・保険会社社員・ファイナンシャルプランナー"}]};
+(function(){function findNode(n,id){if(n.id===id)return n;if(n.children){for(var k=0;k<n.children.length;k++){var r=findNode(n.children[k],id);if(r)return r;}}return null;}
+Object.keys(SUBDIV).forEach(function(pid){var p=findNode(DATA,pid);if(p){p.children=SUBDIV[pid].map(function(c){return {id:c.id,name:c.name,desc:c.desc};});}});})();
+const LEAFN=countLeaves(DATA);
+let li=0;
+function prep(n,depth,parent){
+  n.depth=depth; n.parent=parent||null; byId[n.id]=n;
+  if(n.children&&n.children.length){
+    n.children.forEach(c=>prep(c,depth+1,n));
+    n.ang=(n.children[0].ang+n.children[n.children.length-1].ang)/2;
+  }else{ n.ang=(li+0.5)*(2*Math.PI/LEAFN); li++; }
+  const r=radiusOf(depth), va=n.ang-Math.PI/2;
+  n.r=r; n.va=va; n.x=r*Math.cos(va); n.y=r*Math.sin(va);
+}
+prep(DATA,0,null);
+// 別名（検索吸収用）：正式名称・通称・職業名など
+const ALIASES={
+  humanities:['人文','人文科学'], literature:['文学','国文','日本文学','英文','言語'],
+  history:['歴史','史学'], philosophy_dept:['哲学','倫理','思想'],
+  psychology:['心理','心理学'], clinical_psych:['臨床心理','カウンセラー','公認心理師','心理士'],
+  cog_psych:['発達心理','認知心理'], human_sciences:['人間科学','総合人間'],
+  religion:['宗教','神学'], archaeology:['考古','文化財'],
+  social:['社会科学'], law:['法','法律','法律学'], politics:['政治','国際','国際関係'],
+  economics:['経済'], business:['経営','商','商学','ビジネス'], sociology:['社会','社会学'],
+  social_welfare:['福祉','社会福祉','ソーシャルワーク'],
+  science:['理学','自然科学'], math:['数学','数理'], physics:['物理'], chemistry:['化学'],
+  biology:['生物','生命科学'], earth:['地学','地球科学','防災'],
+  engineering:['工学','工'], mechanical:['機械'], ee:['電気','電子','電気電子'],
+  civil:['土木','都市'], architecture:['建築'], materials:['材料','応用化学'],
+  info:['情報'], info_cs:['情報','情報科学','IT','プログラミング','コンピュータ','AI','エンジニア','システム'],
+  info_system:['情報システム','経営情報'], media:['メディア','映像','コンテンツ','マスコミ'],
+  health:['医療','保健'], medicine:['医','医師','医学'], nursing:['看護','ナース','看護師'],
+  rehab_pt:['理学療法','作業療法','リハビリ','言語聴覚'], judo_therapy:['柔道整復','整復','鍼灸','トレーナー','接骨'],
+  pharmacy:['薬','薬剤師'], nutrition:['栄養','食物','管理栄養','栄養士'],
+  education:['教育'], education_general:['教育','教員','教師','先生','初等教育'],
+  education_lang:['国語','英語','教科'], childcare:['保育','幼児','幼稚園','こども','子ども'],
+  special_edu:['特別支援'],
+  life:['生活科学','人間生活'], home_econ:['家政','生活'], culinary:['調理','製菓','料理','フード'],
+  fashion:['服飾','被服','ファッション','アパレル'],
+  art:['芸術'], design:['デザイン'], fine_art:['美術','造形','アート'], music:['音楽'],
+  nature_field:['農','生命'], agriculture:['農','農学','食品','農業'], environment:['環境'], veterinary:['獣医','動物'],
+  sports_field:['体育','スポーツ'], sports:['スポーツ','体育','健康スポーツ'], health_edu:['保健','健康'],
+  liberal_arts:['教養','リベラルアーツ','総合教養'], culture_studies:['文化','日本文化','歴史文化','地域文化'],
+  dental_hygiene:['歯科衛生','歯科','歯科衛生士','口腔'],
+  practical:['実学','専門技術','手に職'], beauty:['美容','理容','ビューティー','エステ','ヘアメイク','メイク','ネイル','美容師'],
+  bridal_hotel:['ブライダル','ホテル','観光','ウェディング','旅行','ホスピタリティ','おもてなし'],
+  auto_mech:['自動車','整備','自動車整備','メカニック','車','自動車整備士'],
+  care_welfare:['介護','ケア','介護福祉','介護福祉士'], med_admin:['医療事務','医療秘書','医事'],
+  accounting:['会計','簿記','税理士','公認会計士','経理','ファイナンス'],
+};
+Object.keys(ALIASES).forEach(id=>{ if(byId[id]) byId[id].aliases=ALIASES[id]; });
+/* 学べること(L)／解決できる社会課題(S)／主な進路(C)：「学部学科で学べること一覧」より */
+const LEARN={
+  literature:{L:'文学作品の読解・批評、言語の構造、思想・哲学、歴史資料の分析を通じて人間の心や文化を深く理解する',S:'文化財・歴史資料の保存と継承、多文化共生社会での相互理解不足、情報過多時代の読解力・思考力低下',C:'出版・編集者、教員、学芸員、ライター、企画・広報'},
+  philosophy_dept:{L:'思想・哲学・倫理、論理の組み立て方そのものを学び、物事を根本から問い直す力を養う',S:'価値観の対立、意思決定の難しさ、情報過多時代の判断力・思考力の低下',C:'教員、出版・編集、研究者、企画職'},
+  history:{L:'歴史資料の分析、過去から現在を読み解く視点、地域や文化の成り立ちを学ぶ',S:'文化財・歴史資料の保存と継承、地域の記憶・文化の喪失',C:'学芸員、教員、編集者、まちづくり・観光'},
+  religion:{L:'宗教・思想、人が何を信じ何に支えられて生きるかを学ぶ',S:'価値観の多様化と相互理解、心の拠り所の喪失',C:'教員、研究者、福祉・相談職'},
+  archaeology:{L:'遺跡・遺物から人類や地域の歴史をたどる調査・分析を学ぶ',S:'文化財の保存・活用、地域資源の発掘',C:'学芸員、文化財調査員、行政'},
+  culture_studies:{L:'日本文化・地域文化を読み解き、受け継ぎ・発信する力を学ぶ',S:'地域文化の衰退、文化の継承と発信不足',C:'学芸員、観光・地域おこし、メディア'},
+  human_sciences:{L:'心理・社会・教育・健康をまたいで「人間とは何か」を総合的に学ぶ',S:'単一分野では解けない複合的な人の課題',C:'公務員、企画、福祉・心理職、一般企業'},
+  liberal_arts:{L:'文理の枠を超え、政策・経済・環境・情報などを横断的に学び、複合課題への解決提案力を養う',S:'地方創生、環境と経済の両立など単一分野では解けない複合的社会課題',C:'公務員、コンサルタント、NPO、企画職'},
+  psychology:{L:'人の心と行動のメカニズム、カウンセリング技法、心理統計・実験法、発達・社会心理学',S:'増加するメンタルヘルス不調、職場のストレス、子どもの心のケア、依存症',C:'公認心理師・臨床心理士、スクールカウンセラー、人事・マーケ、福祉'},
+  clinical_psych:{L:'心の不調への支援、カウンセリングと臨床心理の技法',S:'メンタルヘルス不調の増加、子ども・職場の心のケア不足、依存症',C:'公認心理師・臨床心理士、スクールカウンセラー、医療・福祉'},
+  cog_psych:{L:'人がどう学び育つかの認知・発達の仕組み',S:'学びにつまずく子への支援、教育や子育ての現場の課題',C:'研究者、教育・発達支援、人事'},
+  law:{L:'憲法・民法・刑法などの法体系、法的思考力(リーガルマインド)、政治制度、政策立案',S:'契約・労働・消費者トラブル、企業コンプライアンス違反、人権侵害',C:'弁護士・裁判官・検察官、公務員、企業法務、司法書士・行政書士'},
+  politics:{L:'政治制度・国際関係・政策立案、社会の決め方と世界のつながり',S:'行政制度の課題、国際紛争・難民、貿易摩擦、地域の政策課題',C:'公務員、外交官、国際機関・NGO、企画職'},
+  economics:{L:'ミクロ・マクロ経済学、財政・金融、計量経済学、経済データ分析',S:'景気変動・インフレ、所得格差、地域経済の衰退、年金・財政問題',C:'銀行・証券・保険、公務員、シンクタンク、データアナリスト'},
+  business:{L:'企業経営の戦略、組織マネジメント、会計・財務、マーケティング、起業の方法論',S:'企業の生産性低迷、後継者不足、中小企業の経営難、新規事業創出の停滞',C:'企画・営業・経理、コンサルタント、起業家'},
+  accounting:{L:'簿記・会計・財務、経理実務、税務、ビジネスマナーやPCスキル',S:'中小企業の経理・事務人材不足、バックオフィスのデジタル化',C:'経理・総務、公認会計士・税理士、営業・販売'},
+  sociology:{L:'社会調査の手法、家族・地域・労働などの社会現象の分析、メディア論',S:'少子高齢化、地域コミュニティの希薄化、SNS時代の情報問題、格差・貧困',C:'マスコミ・広告、市場調査、公務員、NPO、社会福祉士'},
+  social_welfare:{L:'社会保障制度、相談援助技術(ソーシャルワーク)、高齢者・障害者・児童福祉、介護技術',S:'超高齢社会の介護人材不足、子どもの貧困・虐待、障害者支援、生活困窮者支援',C:'社会福祉士、精神保健福祉士、介護福祉士、福祉施設職員、公務員(福祉職)'},
+  math:{L:'数と論理を扱う基礎科学。数理的思考があらゆる技術・データの土台になる',S:'科学技術の基盤となる未解明問題、データ・AIの理論的支え',C:'研究者、教員、データサイエンティスト、メーカー'},
+  physics:{L:'物質・力・エネルギーの法則を解明する基礎科学',S:'新素材・新エネルギーの探索、科学技術の基盤課題',C:'研究者、教員、メーカー研究開発'},
+  chemistry:{L:'物質の構造と変化を扱い、素材・薬・食を支える基礎科学',S:'新素材・環境負荷低減、資源リサイクル',C:'化学・素材・製薬メーカー、品質管理、研究者'},
+  biology:{L:'生命現象のメカニズムを探り、医療・農・環境の入り口を学ぶ',S:'生命科学の未解明問題、医療・食・環境の基盤課題',C:'研究者、メーカー研究開発、教員'},
+  earth:{L:'地球・気象・地質のメカニズム、防災を学ぶ',S:'気象災害の予測、防災・減災、地球環境のモニタリング',C:'気象・環境関連、研究者、公務員'},
+  mechanical:{L:'力学・材料・熱・流体の4力学、設計・製図、ロボティクス、生産技術',S:'製造業の人手不足を補う自動化、省エネ機械の開発、ものづくり技術の継承',C:'自動車・機械メーカーの設計開発、生産技術者、ロボットエンジニア'},
+  ee:{L:'電気回路・電子デバイス、半導体、通信技術、電力システム、制御工学',S:'半導体不足、電力の安定供給、再生可能エネルギー導入、通信インフラ高度化',C:'電機・半導体メーカー、電力・通信会社、回路設計エンジニア'},
+  info_cs:{L:'プログラミング、AI・機械学習、データ分析、ネットワーク、セキュリティ、ソフトウェア開発',S:'DXの遅れ、IT人材不足、サイバー攻撃、ビッグデータ活用、AIによる業務効率化',C:'システムエンジニア、AIエンジニア、データサイエンティスト、セキュリティ技術者'},
+  info_system:{L:'情報技術と業務をつなぐシステム設計、データ活用、DX推進',S:'中小企業のDXの遅れ、現場の業務を仕組みで解く必要',C:'システムエンジニア、社内SE、ITコンサル'},
+  media:{L:'メディア・映像・コンテンツ制作と発信、伝える技術',S:'企業の広告・ブランディング不足、コンテンツ産業の人材育成、情報の伝わりにくさ',C:'マスコミ・広告、映像クリエイター、Web・編集'},
+  civil:{L:'橋梁・道路などインフラの計画・施工・維持管理、都市計画',S:'老朽化インフラの維持更新、災害に強いまちづくり、脱炭素',C:'施工管理技士、ゼネコン、公務員(土木職)'},
+  architecture:{L:'建築設計・構造・環境設備、都市計画、CAD・製図',S:'老朽化インフラ、災害に強いまちづくり、空き家問題、脱炭素建築',C:'建築士、施工管理技士、設計事務所、インテリアコーディネーター'},
+  materials:{L:'有機・無機・物理化学、高分子、新素材開発、化学プロセス',S:'脱プラスチック・環境負荷低減、電池・半導体材料の開発、資源リサイクル',C:'化学・素材・製薬メーカーの研究開発、化学プラント技術者'},
+  agriculture:{L:'作物生産、品種改良、食品の機能と安全、バイオ、森林・環境資源の管理',S:'食料自給率の低さ、農業の担い手不足、食品ロス、森林荒廃、スマート農業化',C:'食品メーカー、農業法人、公務員(農林水産)、研究機関'},
+  environment:{L:'環境問題の科学的分析、環境政策・法、再生可能エネルギー、循環型社会',S:'気候変動、ごみ・資源循環、生物多様性の喪失、企業の脱炭素経営',C:'環境コンサルタント、公務員(環境職)、エネルギー企業、サステナビリティ部門'},
+  veterinary:{L:'動物の解剖・生理・病理、飼養管理、伴侶動物医療、人獣共通感染症',S:'ペット医療の高度化、家畜伝染病対策、獣医師の地域偏在、動物福祉',C:'獣医師、動物看護師、畜産技術者、製薬・飼料メーカー'},
+  medicine:{L:'人体の構造と機能、病気の診断・治療、臨床実習、医学研究の基礎',S:'地域医療の医師不足、高齢化に伴う医療需要増、新興感染症、がん・生活習慣病',C:'医師(臨床医・研究医)、医系技官、医学研究者'},
+  dental_hygiene:{L:'歯・口腔の構造、う蝕・歯周病の予防と治療補助、口腔ケア・歯科技工',S:'高齢者の口腔機能低下(オーラルフレイル)、歯と全身疾患の関連、予防歯科の普及',C:'歯科衛生士、歯科技工士、歯科医師、行政(歯科)'},
+  pharmacy:{L:'医薬品の作用メカニズム、調剤・服薬指導、創薬研究、薬事法規',S:'薬の飲み残し・多剤併用問題、新薬開発の停滞、セルフメディケーション推進',C:'薬剤師(病院・薬局)、製薬企業の研究開発・MR、行政(薬事)'},
+  nursing:{L:'看護理論と技術、疾病の理解、患者・家族へのケア、地域・在宅看護、保健指導',S:'看護師不足、在宅医療・介護の需要増、医療と生活をつなぐケアの不足',C:'看護師、保健師、助産師、養護教諭'},
+  rehab_pt:{L:'身体機能の回復訓練、日常生活動作の支援、言語・嚥下リハビリ',S:'高齢者の介護予防・リハビリ需要増、医療技術職の人材不足、障害者の社会参加支援',C:'理学療法士、作業療法士、言語聴覚士'},
+  judo_therapy:{L:'外傷の施術、骨・関節・筋のケア、東洋医学の施術(はり・きゅう)を国家資格レベルで',S:'高齢者の身体ケア需要増、スポーツ外傷への対応、医療と運動をつなぐ役割',C:'柔道整復師、はり師・きゅう師、スポーツトレーナー、接骨院'},
+  care_welfare:{L:'介護技術、相談援助、高齢者・障害者支援を実習中心に学ぶ',S:'介護人材の深刻な不足、超高齢社会の在宅・施設ケア、障害者支援の担い手不足',C:'介護福祉士、社会福祉士、福祉施設職員、児童指導員'},
+  med_admin:{L:'医療事務、レセプト(診療報酬請求)、医療秘書、診療情報の管理・分析',S:'病院運営の効率化、医療データ活用、医療機関の事務人材不足',C:'医療事務員、診療情報管理士、医療秘書、調剤薬局事務'},
+  education_general:{L:'教育学・心理学の理論、教科指導法、子どもの発達理解、学級経営、特別支援',S:'学力格差、いじめ・不登校、教員不足、発達障害児への支援不足、教育のICT化の遅れ',C:'小・中・高校教員、教育行政、塾・教育産業'},
+  education_lang:{L:'国語・英語などの教科指導法、言葉を通して伝える力を育てる',S:'読解力・表現力の育成、外国語コミュニケーション、学力格差',C:'教員、塾講師、教育産業、出版'},
+  childcare:{L:'子どもの発達と保育実技、幼児教育、障害児支援を実習中心に',S:'待機児童・保育士不足、子育て支援不足、子どもの育ちの格差',C:'保育士、幼稚園教諭、児童指導員'},
+  special_edu:{L:'一人ひとりの違いに合わせた学びの支援、特別支援教育',S:'発達障害児への支援不足、インクルーシブ教育の遅れ',C:'特別支援学校教員、福祉・発達支援'},
+  home_econ:{L:'栄養と健康、食品学、衣服の科学、住環境デザイン、子どもの発達と保育',S:'生活習慣病の増加、食育の必要性、高齢者の住環境整備、子育て支援不足',C:'管理栄養士、栄養教諭、食品メーカー、保育士、住宅関連'},
+  nutrition:{L:'栄養学、食品衛生、献立・メニュー開発、食を通した健康づくり',S:'生活習慣病の増加、食育、高齢者・病者・アスリートの体づくり',C:'管理栄養士・栄養士、食品メーカー、フードコーディネーター'},
+  culinary:{L:'調理技術(和洋中)、製菓・製パン、食品衛生、メニュー開発を実習中心に',S:'飲食業界の人材不足、食の安全への関心、健康志向メニューの開発需要',C:'調理師、パティシエ、ブーランジェ、フードコーディネーター'},
+  fashion:{L:'服飾デザイン、パターン・縫製、スタイリング、ファッションビジネス',S:'アパレル業界の人材育成、サステナブルファッションへの転換、衣服ロス',C:'ファッションデザイナー、パタンナー、スタイリスト、アパレル販売'},
+  beauty:{L:'カット・カラー、メイク、ネイル、エステ、接客を実技中心に学び国家資格を目指す',S:'美容師の人材確保、高齢者向け訪問美容、パーソナルケア需要の多様化',C:'美容師、ヘアメイク、ネイリスト、エステティシャン'},
+  design:{L:'デザインソフトの実技、UI/UX、グラフィック・3DCG・イラスト・動画、ポートフォリオ制作',S:'企業のWeb・広告・ブランディング不足、コンテンツ産業の人材需要',C:'Web・グラフィックデザイナー、CG・映像クリエイター、UI/UXデザイナー'},
+  fine_art:{L:'美術の理論と実技、デザイン思考、作品制作を通じた表現力と創造力',S:'地域の文化振興、企業のブランディング不足、コンテンツ産業の人材育成',C:'デザイナー、イラストレーター、映像クリエイター、アーティスト'},
+  music:{L:'音楽の理論と実技、音響・照明、ボーカル・演奏、イベント制作',S:'ライブ・イベント業界の技術者不足、エンタメコンテンツの国際競争力',C:'音楽家、音響・照明スタッフ、アーティスト、イベント企画'},
+  sports:{L:'運動生理学、トレーニング科学、スポーツ指導法、健康づくり、スポーツマネジメント',S:'運動不足による健康問題、高齢者の介護予防、部活動の地域移行、スポーツ産業振興',C:'保健体育教員、トレーナー、フィットネス・スポーツ業界、健康運動指導士'},
+  health_edu:{L:'健康づくり、保健指導、地域や学校の健康を支える',S:'生活習慣病、健康寿命の延伸、地域・学校の健康課題',C:'養護教諭、保健師、健康運動指導士、行政'},
+  bridal_hotel:{L:'ホテル実務、旅行商品企画、接遇・語学、ウェディング、空港業務、地域資源の活用',S:'観光・宿泊業界の人材不足、インバウンド対応、オーバーツーリズム、ブライダルの多様化',C:'ホテルスタッフ、ツアープランナー、CA・グランドスタッフ、ウェディングプランナー'},
+  auto_mech:{L:'エンジン・シャシの構造、整備実習、故障診断、EV・ハイブリッド技術',S:'自動車整備士の深刻な不足、EV化など新技術への対応、車検・整備の安全確保',C:'自動車整備士、ディーラーのサービスエンジニア、カスタム業界'},
+};
+Object.keys(SUBDIV).forEach(function(pid){SUBDIV[pid].forEach(function(c){LEARN[c.id]={L:c.L,S:c.S,C:c.C};});});
+let allNodes=Object.values(byId);
+const RMAX=Math.max(...allNodes.map(n=>n.r))+170;
+let minX=-RMAX, maxX=RMAX, minY=-RMAX, maxY=RMAX;
+const worldW=2*RMAX, worldH=2*RMAX;
+
+/* 色：分野ごとに色相を割り当て、子は継承 */
+const branches=DATA.children; const BH={};
+branches.forEach((b,i)=>{ const h=Math.round(i*(360/branches.length)); (function col(n){n._h=h;(n.children||[]).forEach(col);})(b); });
+DATA._h=null;
+function fillOf(n){ if(n._h==null) return '#0c333d'; return `hsl(${n._h},46%,27%)`; }
+function strokeOf(n){ if(n._h==null) return 'var(--accent)'; return `hsl(${n._h},62%,62%)`; }
+function fontOf(n){ return n.depth===0?22: n.kind==='分野'?15:13; }
+function wOf(n){ return n.depth===0?150: n.kind==='分野'?128:NW; }
+
+/* ===================== 描画 ===================== */
+const world=document.getElementById('world');
+const NS='http://www.w3.org/2000/svg';
+function el(t,a){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);return e;}
+const linkLayer=el('g',{}), relLayer=el('g',{}), nodeLayer=el('g',{});
+world.appendChild(relLayer); world.appendChild(linkLayer); world.appendChild(nodeLayer);
+const nodeEls={};
+function draw(){
+  // links：親→子の放射状の線
+  allNodes.forEach(n=>{ (n.children||[]).forEach(c=>{
+    linkLayer.appendChild(el('line',{class:'link', id:'lk-'+c.id, x1:n.x,y1:n.y,x2:c.x,y2:c.y,
+      stroke:strokeOf(c), 'stroke-opacity':0.3}));
+  });});
+  allNodes.forEach(n=>{
+    const g=el('g',{class:'node',id:'nd-'+n.id});
+    if(n.depth===0){
+      g.appendChild(el('circle',{cx:n.x,cy:n.y,r:40,fill:fillOf(n),stroke:'var(--accent)','stroke-width':2.4}));
+      const t=el('text',{x:n.x,y:n.y,'text-anchor':'middle','dominant-baseline':'central','font-size':23,'font-weight':900});
+      t.textContent=n.name; g.appendChild(t);
+    } else if(n.kind==='分野'){
+      const w=Math.max(98, n.name.length*16+28);
+      g.appendChild(el('rect',{x:n.x-w/2,y:n.y-NH/2,width:w,height:NH,rx:10,fill:fillOf(n),stroke:strokeOf(n),'stroke-width':1.8}));
+      const t=el('text',{x:n.x,y:n.y,'text-anchor':'middle','dominant-baseline':'central','font-size':15});
+      t.textContent=n.name; g.appendChild(t);
+    } else {
+      // 学科・専門：ドット＋放射ラベル
+      g.appendChild(el('circle',{class:'dot',cx:n.x,cy:n.y,r:6,fill:strokeOf(n),stroke:'#070a0c','stroke-width':1.5}));
+      const flip=n.x<0, off=12, deg=n.va*180/Math.PI+(flip?180:0);
+      const t=el('text',{x:n.x+(flip?-off:off),y:n.y,'dominant-baseline':'central','font-size':13.5,
+        'text-anchor':flip?'end':'start','transform':`rotate(${deg} ${n.x} ${n.y})`});
+      t.textContent=n.name; g.appendChild(t);
+    }
+    g.addEventListener('click',ev=>{ev.stopPropagation(); if(!dragged) select(n.id,true);});
+    nodeLayer.appendChild(g); nodeEls[n.id]=g;
+  });
+}
+draw();
+
+/* ===================== パン / ズーム ===================== */
+const svg=document.getElementById('map');
+let tx=0,ty=0,s=1;
+function size(){return {W:svg.clientWidth,H:svg.clientHeight};}
+function apply(){ world.setAttribute('transform',`translate(${tx},${ty}) scale(${s})`); drawMini(); }
+function fit(){ const {W,H}=size(); const mob=W<=720;
+  s=Math.min(W,H)/(2*RMAX)*(mob?1.2:0.95); tx=W/2; ty=mob?H*0.52:H/2; apply(); }
+fit();
+window.addEventListener('resize',()=>{drawMini();});
+
+let dragging=false,dragged=false,lx=0,ly=0;
+const ptrs=new Map(); let pinchDist=0, pinchMid=null;
+svg.addEventListener('pointerdown',e=>{ ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY}); svg.setPointerCapture(e.pointerId);
+  if(ptrs.size===1){dragging=true;dragged=false;lx=e.clientX;ly=e.clientY;svg.classList.add('drag');}
+  else if(ptrs.size===2){ dragging=false; const p=[...ptrs.values()];
+    pinchDist=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y); pinchMid={x:(p[0].x+p[1].x)/2,y:(p[0].y+p[1].y)/2}; }
+});
+svg.addEventListener('pointermove',e=>{ if(!ptrs.has(e.pointerId))return; ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(ptrs.size>=2){ const p=[...ptrs.values()]; const d=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y); const mid={x:(p[0].x+p[1].x)/2,y:(p[0].y+p[1].y)/2};
+    if(pinchDist>0) zoomAt(mid.x,mid.y, d/pinchDist);
+    if(pinchMid){ tx+=mid.x-pinchMid.x; ty+=mid.y-pinchMid.y; apply(); }
+    pinchDist=d; pinchMid=mid; dragged=true; return; }
+  if(dragging){ const dx=e.clientX-lx,dy=e.clientY-ly; if(Math.abs(dx)+Math.abs(dy)>4)dragged=true; tx+=dx;ty+=dy;lx=e.clientX;ly=e.clientY;apply(); }
+});
+function endPtr(e){ ptrs.delete(e.pointerId); if(ptrs.size<2){pinchDist=0;pinchMid=null;}
+  if(ptrs.size===0){dragging=false;svg.classList.remove('drag');}
+  else if(ptrs.size===1){ const p=[...ptrs.values()][0]; dragging=true; lx=p.x; ly=p.y; } }
+svg.addEventListener('pointerup',endPtr); svg.addEventListener('pointercancel',endPtr);
+svg.addEventListener('click',()=>{ if(!dragged) closeDetail(); });
+svg.addEventListener('wheel',e=>{e.preventDefault(); zoomAt(e.clientX,e.clientY, e.deltaY<0?1.12:1/1.12);},{passive:false});
+function zoomAt(px,py,f){ const rect=svg.getBoundingClientRect(); const mx=px-rect.left,my=py-rect.top;
+  const wx=(mx-tx)/s, wy=(my-ty)/s; s=Math.max(0.16,Math.min(3.2,s*f));
+  tx=mx-wx*s; ty=my-wy*s; apply(); }
+document.getElementById('zin').onclick=()=>{const{W,H}=size();zoomAt(W/2,H/2,1.25);};
+document.getElementById('zout').onclick=()=>{const{W,H}=size();zoomAt(W/2,H/2,1/1.25);};
+document.getElementById('zrst').onclick=()=>{clearSel(); fit();};
+
+/* スムーズ移動 */
+let anim=null;
+function animateTo(wx,wy,ns){ const {W,H}=size(); const s0=s,tx0=tx,ty0=ty;
+  const ts=ns, ttx=W/2-wx*ns, tty=H/2-wy*ns; const t0=performance.now(),dur=460;
+  if(anim)cancelAnimationFrame(anim);
+  (function step(now){ let k=Math.min(1,(now-t0)/dur); k=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;
+    s=s0+(ts-s0)*k; tx=tx0+(ttx-tx0)*k; ty=ty0+(tty-ty0)*k; apply();
+    if(k<1)anim=requestAnimationFrame(step); })(t0);
+}
+
+/* ===================== 選択・系譜・隣接 ===================== */
+let selId=null;
+function ancestors(n){const a=[];let p=n.parent;while(p){a.unshift(p);p=p.parent;}return a;}
+function clearSel(){ selId=null;
+  allNodes.forEach(n=>{const g=nodeEls[n.id];g.classList.remove('sel','lineage','adj','dim');
+    const lk=document.getElementById('lk-'+n.id); if(lk)lk.classList.remove('path');});
+  relLayer.innerHTML=''; renderCrumbDefault();
+}
+function select(id,focus){
+  const n=byId[id]; if(!n)return; clearSel(); selId=id;
+  const anc=ancestors(n); const lin=[...anc,n];
+  // dim all, then light lineage
+  allNodes.forEach(m=>nodeEls[m.id].classList.add('dim'));
+  lin.forEach(m=>{nodeEls[m.id].classList.remove('dim');nodeEls[m.id].classList.add('lineage');
+    const lk=document.getElementById('lk-'+m.id); if(lk){lk.classList.add('path');}});
+  nodeEls[id].classList.remove('lineage'); nodeEls[id].classList.add('sel');
+  // children (分化先) un-dim
+  (n.children||[]).forEach(c=>nodeEls[c.id].classList.remove('dim'));
+  // siblings un-dim slightly
+  if(n.parent)(n.parent.children||[]).forEach(sib=>nodeEls[sib.id].classList.remove('dim'));
+  // adjacency (related cross-links)
+  const rel=(n.related||[]).map(r=>byId[r]).filter(Boolean);
+  rel.forEach(m=>{ nodeEls[m.id].classList.remove('dim'); nodeEls[m.id].classList.add('adj');
+    relLayer.appendChild(el('path',{class:'rel',
+      d:`M ${n.x} ${n.y} C ${(n.x+m.x)/2} ${n.y}, ${(n.x+m.x)/2} ${m.y}, ${m.x} ${m.y}`}));
+  });
+  renderCrumb(lin); openDetail(n,anc,rel);
+  if(focus) animateTo(n.x, n.y, Math.max(s,0.95));
+}
+
+/* ===================== 系譜パンくず ===================== */
+const crumb=document.getElementById('crumb');
+function renderCrumbDefault(){ crumb.innerHTML='<span class="ph">学科を検索すると、ここに「哲学 › … › あなたの学科」の系譜が出ます</span>'; }
+function renderCrumb(lin){ crumb.innerHTML='';
+  lin.forEach((n,i)=>{ if(i)crumb.appendChild(Object.assign(document.createElement('span'),{className:'sep',textContent:'›'}));
+    const c=document.createElement('span'); c.className='c'+(i===lin.length-1?' cur':''); c.textContent=n.name;
+    c.onclick=()=>select(n.id,true); crumb.appendChild(c); });
+}
+
+/* ===================== 詳細パネル ===================== */
+const detail=document.getElementById('detail');
+function chip(n,cls){const b=document.createElement('span');b.className='chip'+(cls?' '+cls:'');b.textContent=n.name;b.onclick=()=>select(n.id,true);return b;}
+function openDetail(n,anc,rel){
+  document.getElementById('dkind').textContent=n.kind||'学科';
+  document.getElementById('dname').textContent=n.name;
+  document.getElementById('dlevel').textContent='抽象度レベル '+n.depth+'　／　'+(anc.length?anc.map(a=>a.name).join(' › '):'頂点');
+  document.getElementById('ddesc').textContent=n.desc||'';
+  const dl=document.getElementById('dLearn'), li=LEARN[n.id];
+  if(li){ dl.style.display='block'; dl.innerHTML='<div class="dl-row"><b>学べること</b>'+esc(li.L)+'</div>'+
+    '<div class="dl-row"><b>解決できる社会課題</b>'+esc(li.S)+'</div>'+
+    '<div class="dl-row"><b>主な進路・職業</b>'+esc(li.C)+'</div>'; }
+  else dl.style.display='none';
+  const up=document.getElementById('ch-up'); up.innerHTML='';
+  const parent=n.parent; if(parent){up.appendChild(chip(parent,'up'));} document.getElementById('sec-up').style.display=parent?'block':'none';
+  const dn=document.getElementById('ch-down'); dn.innerHTML='';
+  (n.children||[]).forEach(c=>dn.appendChild(chip(c))); document.getElementById('sec-down').style.display=(n.children&&n.children.length)?'block':'none';
+  const aj=document.getElementById('ch-adj'); aj.innerHTML='';
+  let adj=[...rel]; if(parent){(parent.children||[]).forEach(sib=>{if(sib.id!==n.id&&!adj.includes(sib))adj.push(sib);});}
+  adj.slice(0,8).forEach(m=>aj.appendChild(chip(m))); document.getElementById('sec-adj').style.display=adj.length?'block':'none';
+  detail.classList.add('open'); document.getElementById('minimap').classList.add('shift');
+}
+function closeDetail(){ detail.classList.remove('open'); document.getElementById('minimap').classList.remove('shift'); }
+document.getElementById('dclose').onclick=()=>{closeDetail();clearSel();};
+
+/* ===================== 検索 ===================== */
+const dl=document.getElementById('allnames');
+allNodes.filter(n=>n.depth>0).forEach(n=>{const o=document.createElement('option');o.value=n.name;dl.appendChild(o);});
+const sugg=document.getElementById('sugg');
+function renderSugg(list,msg){ sugg.innerHTML='';
+  if(msg){const m=document.createElement('div');m.className='sgmsg';m.textContent=msg;sugg.appendChild(m);}
+  list.forEach(n=>sugg.appendChild(chip(n))); sugg.style.display=(list.length||msg)?'block':'none'; }
+function tokenize(q){
+  return q.split(/[\s　・／\/,，、。・\-－—~〜｜|]+/).map(t=>t.trim()).filter(Boolean)
+    .map(t=>t.replace(/^(国立|公立|私立)/,''))
+    .map(t=>{const s=t.replace(/(学部|学群|学類|研究科|学科|課程|専攻|コース|プログラム|専門学校|短期大学|大学院|大学)$/,'');return s||t;})
+    .filter(t=>t.length>0 && !/^.{1,3}大$/.test(t));
+}
+// 強い指標語：校名に紛れる語（例「簿記情報」の情報）に負けないよう優先
+const STRONGW={ accounting:['簿記','会計','税理士','公認会計士','経理'] };
+function scoreNode(n,toks){ const names=[n.name].concat(n.aliases||[]); let best=0;
+  toks.forEach(t=>{ names.forEach(nm=>{
+    if(nm===t) best=Math.max(best,100);
+    else if(t.length>=2 && nm.indexOf(t)>=0) best=Math.max(best,42+t.length);
+    else if(nm.length>=2 && t.indexOf(nm)>=0) best=Math.max(best,32+nm.length);
+  });});
+  const sw=STRONGW[n.id]; if(sw) toks.forEach(t=>{ if(sw.some(k=>t.indexOf(k)>=0)) best=Math.max(best,120); });
+  return best>0 ? best + n.depth : 0; // 同点なら深い（具体的）学科を優先
+}
+function doSearch(){ const raw=document.getElementById('q').value.trim(); if(!raw){renderSugg([],null);return;}
+  const toks=tokenize(raw);
+  const scored=allNodes.filter(n=>n.depth>0).map(n=>({n,sc:scoreNode(n,toks)}))
+    .filter(x=>x.sc>0).sort((a,b)=>b.sc-a.sc);
+  if(scored.length && scored[0].sc>=30){
+    select(scored[0].n.id,true);
+    const others=scored.slice(1,5).map(x=>x.n);
+    renderSugg(others, others.length?'近いのはこのあたり。となりも見てみよう：':null);
+  } else if(scored.length){
+    renderSugg(scored.slice(0,6).map(x=>x.n),'もしかして、この中にありますか？');
+  } else {
+    renderSugg(branches,'ぴったりは見つからず。まず大きな分野から降りてみよう：');
+  }
+}
+document.getElementById('go').onclick=doSearch;
+document.getElementById('q').addEventListener('keydown',e=>{if(e.key==='Enter')doSearch();});
+
+/* ===================== ミニマップ ===================== */
+const mmsvg=document.getElementById('mmsvg'), mmview=document.getElementById('mmview');
+let mmReady=false; var miniOK=false;
+function initMini(){ const mm=document.getElementById('minimap'); const mw=mm.clientWidth,mh=mm.clientHeight;
+  const sc=Math.min(mw/worldW,mh/worldH)*0.92; const ox=(mw-worldW*sc)/2, oy=(mh-worldH*sc)/2;
+  mmsvg._sc=sc; mmsvg._ox=ox; mmsvg._oy=oy;
+  // static nodes
+  [...mmsvg.querySelectorAll('.mmn')].forEach(e=>e.remove());
+  allNodes.forEach(n=>{ const r=el('rect',{class:'mmn', x:ox+(n.x-minX)*sc-2, y:oy+(n.y-minY)*sc-1.2,
+    width:4,height:2.4, fill: n._h==null?'#2bd9a6':`hsl(${n._h},45%,50%)`, opacity:0.85});
+    mmsvg.insertBefore(r,mmview); });
+  mmReady=true;
+}
+function drawMini(){ if(!miniOK) return; const sc=mmsvg._sc,ox=mmsvg._ox,oy=mmsvg._oy; const {W,H}=size();
+  const wx0=(0-tx)/s, wy0=(0-ty)/s, wx1=(W-tx)/s, wy1=(H-ty)/s;
+  mmview.setAttribute('x',ox+(wx0-minX)*sc); mmview.setAttribute('y',oy+(wy0-minY)*sc);
+  mmview.setAttribute('width',Math.max(6,(wx1-wx0)*sc)); mmview.setAttribute('height',Math.max(6,(wy1-wy0)*sc));
+}
+document.getElementById('minimap').addEventListener('click',e=>{ const r=mmsvg.getBoundingClientRect();
+  const sc=mmsvg._sc,ox=mmsvg._ox,oy=mmsvg._oy; const wx=(e.clientX-r.left-ox)/sc+minX, wy=(e.clientY-r.top-oy)/sc+minY;
+  animateTo(wx,wy,s); });
+initMini(); miniOK=true; drawMini(); apply();
+
+/* ===================== 伴走シミュレーター ===================== */
+/* キャリアクエスト2026（7/3）参加ブース。rel＝関連する学科ノードid */
+const COMPANIES=[
+  {name:'ALSOK北海道',type:'警備',act:'金属探知機体験・装備品の展示',rel:['law','politics','sports']},
+  {name:'札幌ニチレイサービス',type:'物流',act:'入庫・出庫・検品作業体験',rel:['business','info_system']},
+  {name:'リカーズかめはた',type:'販売',act:'酒屋の商品配送・商品クイズ',rel:['business','accounting']},
+  {name:'日本アスパラガス',type:'飲料製造販売',act:'清涼飲料水の製造過程の説明',rel:['chemistry','agriculture','materials']},
+  {name:'協同組合・浜ワーク',type:'漁業',act:'海産物（ホタテ/ナマコ/ウニ）に触れる',rel:['agriculture','biology','environment']},
+  {name:'防衛省自衛隊',type:'公務員',act:'制服着用・救護体験',rel:['law','politics','nursing','sports']},
+  {name:'不二建設',type:'建設',act:'測量体験・会社説明',rel:['civil','architecture']},
+  {name:'山鋼札幌',type:'製造販売',act:'屋根材に触り会社の仕組みを知る',rel:['materials','architecture','mechanical']},
+  {name:'ハヤカワ建設',type:'建設',act:'船舶・建設の先端技術や測定',rel:['civil','architecture','mechanical']},
+  {name:'北海道マツダ',type:'販売整備',act:'電動工具を使ってみよう',rel:['auto_mech','mechanical','business']},
+  {name:'地崎商事',type:'卸小売',act:'タイヤ交換をしてみよう',rel:['auto_mech','business']},
+  {name:'近藤工業',type:'建設',act:'建設業界クイズ',rel:['civil','architecture']},
+  {name:'東洋ワークセキュリティ',type:'警備',act:'（検討中）',rel:['law','politics']},
+  {name:'特養ホーム石狩希久の園',type:'福祉介護',act:'介護機器・車椅子・コミュロボ体験',rel:['care_welfare','social_welfare','nursing']},
+  {name:'勤医協福祉会',type:'福祉介護',act:'高齢者への食事支援体験',rel:['care_welfare','nursing','nutrition','social_welfare']},
+  {name:'札幌蒼生会',type:'福祉介護',act:'介護ってなんだろう？介助方法',rel:['care_welfare','social_welfare','nursing']},
+  {name:'片山建設',type:'型枠大工',act:'（検討中）',rel:['civil','architecture','mechanical']},
+  {name:'弟子屈ラーメン',type:'飲食',act:'ラーメンづくり（検討中）',rel:['culinary','bridal_hotel','business']},
+  {name:'アミノアップ',type:'製造',act:'製造工場をバーチャルに体験',rel:['chemistry','biology','materials']},
+  {name:'樋口（スズラン）',type:'製造販売',act:'工具で金属を折り曲げ焚き火台作成',rel:['mechanical','materials']},
+  {name:'北の森づくり専門学校',type:'林業・自然',act:'',rel:['environment','agriculture','biology']},
+  {name:'北海道鍼灸専門学校',type:'医療',act:'',rel:['judo_therapy','rehab_pt','sports']},
+  {name:'日本医療大学（福祉心理）',type:'福祉・心理',act:'',rel:['psychology','social_welfare','care_welfare','human_sciences']},
+  {name:'日本医療大学（医療DX）',type:'医療DX',act:'',rel:['info_cs','info_system','medicine','nursing']},
+  {name:'北海道文化服装専門学校',type:'ファッション',act:'',rel:['fashion','beauty','design']},
+  {name:'青山建築専門学校',type:'建築',act:'',rel:['architecture','civil','design']},
+  {name:'光園調理製菓専門学校',type:'調理・製菓',act:'',rel:['culinary','nutrition']},
+  {name:'札幌歯科学院',type:'歯科技工',act:'',rel:['dental_hygiene','medicine']},
+  {name:'北海道芸術デザイン',type:'デザイン',act:'',rel:['design','fine_art','media']},
+  {name:'札幌ミュージック＆エンタメ',type:'エンタメ',act:'',rel:['music','media','fine_art']},
+];
+function branchOf(n){ let p=n; while(p.parent && p.parent.depth>0) p=p.parent; return p; }
+function nearScore(c,n){ if(!c.rel)return 0; let s=0; const bn=branchOf(n);
+  if(c.rel.includes(n.id)) s+=4;
+  if(n.parent && c.rel.includes(n.parent.id)) s+=2;
+  (n.related||[]).forEach(r=>{ if(c.rel.includes(r)) s+=1; });
+  c.rel.forEach(f=>{ const ff=byId[f]; if(ff && branchOf(ff)===bn) s+=1; });
+  return s;
+}
+const simEl=document.getElementById('sim'); let simSel=new Set();
+document.getElementById('simBtn').onclick=()=>openSim();
+document.getElementById('simClose').onclick=()=>simEl.classList.remove('open');
+simEl.addEventListener('click',e=>{ if(e.target===simEl) simEl.classList.remove('open'); });
+document.getElementById('simGen').onclick=()=>genQuestions();
+function openSim(){ if(!selId)return; const n=byId[selId];
+  document.getElementById('simField').textContent=n.name;
+  simSel=new Set(); document.getElementById('simOut').innerHTML='';
+  const wrap=document.getElementById('simCompanies'); wrap.innerHTML='';
+  COMPANIES.map(c=>({c,sc:nearScore(c,n)})).sort((a,b)=>b.sc-a.sc).forEach(({c,sc})=>{
+    const d=document.createElement('div'); d.className='sim-co'+(sc>=3?' near':'');
+    d.innerHTML=c.name+'<span class="co-type">'+c.type+'</span>'+(sc>=3?'<span class="near-badge">近い</span>':'');
+    d.onclick=()=>{ if(simSel.has(c.name)){simSel.delete(c.name);d.classList.remove('sel');}
+      else { if(simSel.size>=3) return; simSel.add(c.name); d.classList.add('sel'); } };
+    wrap.appendChild(d);
+  });
+  simEl.classList.add('open');
+}
+function esc(s){ return String(s).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
+/* 企業タイプ→「その会社の現場」フレーズ */
+const TYPE_SITE={
+  '警備':'人の安全を守る現場や、いざという時に落ち着いて動く場面',
+  '公務員':'人の安全を守り、いざという時に人の力になる場面',
+  '物流':'正確さとスピードが命の、モノを動かす現場',
+  '販売':'お客さんとの接点づくりや、信頼を積み上げる場面',
+  '卸小売':'人とモノをつなぐ流通の現場',
+  '販売整備':'お客さんの困りごとを技術で直して返す現場',
+  '飲料製造販売':'ものづくりの工程や、品質・改善の余地がある現場',
+  '製造販売':'ものづくりの工程や、品質・改善の余地がある現場',
+  '製造':'ものづくりの工程や、品質・改善の余地がある現場',
+  '漁業':'自然を相手に段取りする漁の現場',
+  '林業・自然':'森や自然と向き合い、環境を育てる現場',
+  '建設':'測量・段取り・安全など、ものを建てる工程',
+  '建築':'人が過ごす空間を形にする現場',
+  '型枠大工':'ものを形にする建設の手仕事の現場',
+  '福祉介護':'利用者さんの毎日の安心や、職員さんの手が足りない場面',
+  '福祉・心理':'人のこころと暮らしに寄り添う現場',
+  '医療':'体やこころの不調に向き合う現場',
+  '医療DX':'医療を情報・テクノロジーで支える現場',
+  '歯科技工':'歯と口から健康と笑顔を支える現場',
+  '飲食':'おいしさとおもてなしで人を満たす現場',
+  '調理・製菓':'おいしさで人を笑顔にする現場',
+  'ファッション':'人の「なりたい」を装いで叶える現場',
+  'デザイン':'伝わりやすさ・使いやすさを形にする現場',
+  'エンタメ':'人の心を動かし、楽しませる現場',
+};
+function siteOf(c){ return TYPE_SITE[c.type]||'その会社の現場'; }
+function cardHTML(cn,type,act,p){
+  return '<h5>'+esc(cn)+'</h5><div class="qt">'+esc(type)+(act?'｜'+esc(act):'')+'</div>'+
+    '<div class="ql"><b>🔍 専門のメガネで見ると</b><br>'+p.megane+'</div>'+
+    '<div class="ql"><b>🏢 もしここで働いたら（どう活躍できる？）</b><br>'+p.work+'</div>'+
+    '<div class="ql"><b>🤝 この人が将来のお客様になったら（何を解決してあげられる？）</b><br>'+p.customer+'</div>'+
+    '<div class="ql"><b>❓ 専門的に掘る問い</b><br>'+p.ask+'</div>'+
+    '<div class="ql"><b>🧭 是非の問い（この専門に進んでいい？）</b><br>'+p.verdict+'</div>'+
+    '<div class="qfoot">→ 専門のメガネで聞いて、7/3に確かめよう。</div>';
+}
+/* 地図上の「となりの学科」（是非の問い用） */
+function neighborsOf(n){ const s=[]; (n.related||[]).forEach(r=>{ if(byId[r]) s.push(byId[r].name); });
+  if(n.parent)(n.parent.children||[]).forEach(c=>{ if(c.id!==n.id && s.indexOf(c.name)<0) s.push(c.name); });
+  return s.slice(0,3); }
+/* 定型版（AIなし・フォールバック） */
+function templateParts(c,n,who){
+  const fn=esc(n.name), near=nearScore(c,n)>=3, cn=esc(c.name), site=esc(siteOf(c));
+  const nb=neighborsOf(n).map(esc);
+  return {
+    megane:`${fn}を学ぶと、${cn}の説明の中でも「<b>専門だからこそ気づける所</b>」が見えてくる。${site}を、ただ聞くんじゃなく“専門の目”で聞いてみよう。`,
+    work: near?`もし${cn}で働いたら——${site}で、あなたの専門が<b>直接効きそう</b>。どの場面でいちばん課題を解決できるか、想像してみて。`
+              :`もし${cn}で働いたら——一見${fn}とは遠くても、専門の目で見れば「<b>自分なら手伝える所</b>」が隠れているかも。それを探しに行こう。`,
+    customer:`将来あなたが${fn}を身につけたとき、ここで働くこの人は“<b>お客様</b>”になるかも。その人の<b>どんな困りごと</b>を、あなたの専門で解決してあげられそう？`,
+    ask:`相手に：「${cn}で、いちばん解決してあげたい人の<b>困りごと</b>は何ですか？」／自分に：「<b>${who}</b>の私が<b>${fn}</b>で、その困りごとにどこまで近づける？」`,
+    verdict: nb.length
+      ? `ここまで考えて——<b>${fn}</b>に進む気持ちは強まった？ それとも、となりの「<b>${nb.join('・')}</b>」の方が、あなたが解決したい課題に近いかも？ 地図で確かめてみて。`
+      : `ここまで考えて、<b>${fn}</b>に進む確信は強まった？ 少しでも違和感があれば、地図で“となり”の学科ものぞいてみよう。`
+  };
+}
+function renderTemplate(out,sels,n,who){ out.innerHTML='';
+  sels.forEach(c=>{ const d=document.createElement('div'); d.className='qcard'; d.innerHTML=cardHTML(c.name,c.type,c.act,templateParts(c,n,who)); out.appendChild(d); });
+}
+function genQuestions(){ const n=byId[selId]; const cc=document.getElementById('simCatch').value.trim();
+  const out=document.getElementById('simOut');
+  if(simSel.size===0){ out.innerHTML='<div style="color:var(--dim);font-size:14px;">まず②で、まわりたいブースを選んでね（最大3つ）。</div>'; return; }
+  const who=esc(cc||'あなたらしさ'); const sels=COMPANIES.filter(c=>simSel.has(c.name));
+  if(getKey()) genAI(n,cc,who,sels,out); else renderTemplate(out,sels,n,who);
+}
+/* ===== AI直叩き（Anthropic Messages API・ブラウザ直） ===== */
+const KEY_LS='gakumonmap_anthropic_key';
+function getKey(){ try{return localStorage.getItem(KEY_LS)||'';}catch(e){return '';} }
+function setKey(v){ try{ v?localStorage.setItem(KEY_LS,v):localStorage.removeItem(KEY_LS);}catch(e){} }
+const MODEL_LS='gakumonmap_model';
+function getModel(){ try{return localStorage.getItem(MODEL_LS)||'claude-sonnet-4-6';}catch(e){return 'claude-sonnet-4-6';} }
+function setModel(v){ try{localStorage.setItem(MODEL_LS,v);}catch(e){} }
+const CARD_SCHEMA={ type:'object', additionalProperties:false, required:['cards'], properties:{
+  cards:{ type:'array', items:{ type:'object', additionalProperties:false,
+    required:['company','megane','work','customer','ask','verdict'],
+    properties:{ company:{type:'string'}, megane:{type:'string'}, work:{type:'string'}, customer:{type:'string'}, ask:{type:'string'}, verdict:{type:'string'} } } } } };
+async function genAI(n,cc,who,sels,out){
+  out.innerHTML='<div style="color:var(--dim);font-size:14px;">🤖 AIが、あなたの言葉を読んで考えています…</div>';
+  const sys=`あなたは、高校生のキャリア教育を導く先生の右腕です。この生徒はこれから大学・専門学校で「ある専門」に分化していきます。来週のキャリアクエストでは企業や専門学校が説明に来ます。あなたの仕事は、その子が【専門のメガネ】で企業説明を聞いたとき、"自分の専門で世の中の課題をどれだけ解決できそうか"を試算し、そのうえで「本当にこの専門に進んでいいのか」を自分で考える材料を、ブースごとに渡すことです。
+
+【背骨の思想】
+・専門知識は、誰かの課題を解決して「協力者」になるための道具。
+・専門（眼鏡）×持ち味（その子らしさ）＝その子にしかできない課題解決。
+・良い問いは相手の肩書きでなく"核心"を開く。
+
+【各ブースで書く5項目】
+1. megane：その専門を学んだ目で、この企業の説明のどこに注目すると専門的に深く聞けるか（専門だからこそ気づける視点を、その業種・体験内容に即して）
+2. work：もしこの企業で働いたら、その専門で現場のどの課題をどれだけ解決・活躍できそうか（場面で）
+3. customer：将来その専門を身につけたとき、ここで働くこの人が"お客様"になったら、その人のどんな課題を解決してあげられそうか
+4. ask：当日その人にぶつける問い。①相手の核心を開く具体的な問い ②自分への問い返し（自分の専門でその課題にどこまで近づけるか）
+5. verdict：ここまで考えて「この専門に分化して進む確信が強まるか／むしろ"となりの学科"が気になるか」を本人に問い返す一言（となりの学科候補は入力で渡す。合いそうなら背中を押し、ズレそうなら隣を見るよう促す）
+
+【条件】
+・そのブースの実際の業種・体験内容に固有の内容にする（使い回しNG）。
+・キャッチコピー×専門が掛かって初めて出る内容にする。
+・断定しない（「〜かも」「〜できそう」）。本人が当日確かめにいく仮説として書く。
+・中学生にも伝わるやさしい日本語。ただし無難で薄いのは禁止。具体・場面で。お世辞は書かない。進学/就職や大学/専門学校に上下をつけない。
+・出力は指定JSONのみ。
+
+【強い例（柔道整復×面倒見のいい子／介護施設ブース）】
+megane:「"立てない・歩けない"の裏にある体の仕組みに、柔整の目だと自然に目が行くはず」
+ask:「歩けるって、その人にとって何が戻ることですか——食事？トイレ？"誰かに会いに行ける"こと？／自分は柔整の手で、その"またやりたい"にどこまで近づける？」
+verdict:「"体を支えて暮らしを取り戻す"がしっくり来たなら柔整は本命。もし"心の支え"に強く惹かれたら、となりの『臨床心理』も一度のぞいてみて」`;
+  const nb=neighborsOf(n).join('・')||'（地図のとなりの学科）';
+  const li=LEARN[n.id];
+  const learnBlock=li?`\n【この専門で学べること】${li.L}\n【この専門が解決できる社会課題】${li.S}\n【主な進路・職業】${li.C}`:'';
+  const lines=sels.map(c=>`- ${c.name}（業種:${c.type}${c.act?'／体験:'+c.act:''}）｜専門との近さ：${nearScore(c,n)>=3?'近い':'遠め'}`).join('\n');
+  const user=`生徒のキャッチコピー（持ち味）：${cc||'（未記入。「あなたらしさ」として一般化）'}
+志望する専門分野：${n.name}
+分野の説明：${n.desc||''}${learnBlock}
+地図上のとなりの学科（verdictで使う）：${nb}
+
+上の【解決できる社会課題】を土台に、各ブースの仕事がその課題のどこに接するかを具体的に踏まえて書くこと。
+
+出会うブース：
+${lines}
+
+各ブースについて、上の5項目（megane / work / customer / ask / verdict）を、専門×キャッチコピー×そのブースの体験内容に固有の内容で書いてください。companyにはブース名をそのまま入れる。`;
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{ method:'POST',
+      headers:{'content-type':'application/json','x-api-key':getKey(),'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({ model:getModel(), max_tokens:3200, system:sys,
+        messages:[{role:'user',content:user}], output_config:{format:{type:'json_schema',schema:CARD_SCHEMA}} }) });
+    if(!res.ok){ throw new Error('API '+res.status+'：'+(await res.text()).slice(0,160)); }
+    const data=await res.json();
+    const txt=(data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
+    const parsed=JSON.parse(txt); const map={}; (parsed.cards||[]).forEach(c=>{ map[c.company]=c; });
+    out.innerHTML='';
+    sels.forEach(c=>{ let ai=map[c.name]; if(!ai){ const k=Object.keys(map).find(k=>k.indexOf(c.name)>=0||c.name.indexOf(k)>=0); ai=k?map[k]:null; }
+      const p= ai ? {megane:esc(ai.megane||''),work:esc(ai.work||''),customer:esc(ai.customer||''),ask:esc(ai.ask||''),verdict:esc(ai.verdict||'')} : templateParts(c,n,who);
+      const d=document.createElement('div'); d.className='qcard'; d.innerHTML=cardHTML(c.name,c.type,c.act,p); out.appendChild(d); });
+    const tag=document.createElement('div'); tag.style.cssText='color:var(--dim);font-size:11px;margin-top:4px;'; tag.textContent='🤖 AI生成（あなたのキャッチコピーを読んで作成・Haiku 4.5）'; out.appendChild(tag);
+  }catch(e){
+    renderTemplate(out,sels,n,who);
+    const tag=document.createElement('div'); tag.style.cssText='color:#e0a857;font-size:12px;margin-top:8px;line-height:1.6;';
+    tag.textContent='⚠️ AIに接続できなかったので定型版で表示しました。'+(e&&e.message?'（'+e.message+'）':''); out.appendChild(tag);
+  }
+}
+/* AI設定パネル */
+function refreshKeyStatus(){ const s=document.getElementById('simKeyStatus'); const k=getKey();
+  s.textContent=k?'✅ キー保存済み — ③でAIが生成します':'未設定 — ③は定型版で生成します（AIを使うにはキーを保存）';
+  s.style.color=k?'var(--accent)':'var(--dim)'; }
+document.getElementById('simKeyBtn').onclick=()=>{ const p=document.getElementById('simKeyPanel');
+  const open=p.style.display==='block'; p.style.display=open?'none':'block';
+  if(!open){ document.getElementById('simKey').value=getKey(); document.getElementById('simModel').value=getModel(); refreshKeyStatus(); } };
+document.getElementById('simKeySave').onclick=()=>{ setKey(document.getElementById('simKey').value.trim()); refreshKeyStatus(); };
+document.getElementById('simKeyClear').onclick=()=>{ setKey(''); document.getElementById('simKey').value=''; refreshKeyStatus(); };
+document.getElementById('simModel').onchange=e=>setModel(e.target.value);
+</script>
+</body>
+</html>
